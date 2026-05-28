@@ -651,7 +651,7 @@ d365fo index refresh --model MyCustomModel
 | | Name | LinkedIn |
 |---|---|---|
 | <img src="https://avatars.githubusercontent.com/u/AurelienClere-365" width="40" style="border-radius:50%"> | **Aurelien Clere** | [![LinkedIn](https://img.shields.io/badge/LinkedIn-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/in/aurelien-clere/) |
-| <img src="https://avatars.githubusercontent.com/u/LazeJanev" width="40" style="border-radius:50%"> | **Laze Janev** | [![LinkedIn](https://img.shields.io/badge/LinkedIn-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/in/laze-janev/) |
+| <img src="https://avatars.githubusercontent.com/u/LazeJanev" width="40" style="border-radius:50%"> | **Laze Janev** | [![LinkedIn](https://img.shields.io/badge/LinkedIn-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/in/lazejanev/) |
 
 ---
 
