@@ -1,0 +1,36 @@
+name: Validate plugin package
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: ASKILL validation (package.ps1)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run package.ps1 (validation only — no ZIP upload)
+        shell: pwsh
+        run: |
+          $result = .\package.ps1 2>&1
+          $result | Write-Host
+          if ($result -match "FAIL") {
+            Write-Error "One or more ASKILL validation checks failed."
+            exit 1
+          }
+          Write-Host "All validations passed."
+
+      - name: Upload ZIP as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: d365fo-cowork-plugin-${{ github.run_number }}
+          path: d365fo-cowork-plugin.zip
+          retention-days: 14

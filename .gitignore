@@ -1,0 +1,32 @@
+# Built package (generated — do not commit)
+*.zip
+d365fo-cowork-plugin.zip
+
+# D365FO metadata index (large binary — generated locally or by CI)
+d365fo-index.sqlite
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# D365FO build error files
+BuildModelResult.err.xml
+
+# PowerShell local test artifacts
+tmp/
+*.tmp
+
+# Azure credentials & secrets — never commit
+*.pfx
+*.pem
+local.settings.json
+.env
+.env.*
+
+# OS noise
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Editor folders
+.vscode/
+.idea/

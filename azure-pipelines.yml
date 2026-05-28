@@ -1,0 +1,418 @@
+# =============================================================================
+# azure-pipelines.yml
+# Automates the full build + deploy lifecycle for d365fo-cowork-plugin.
+#
+# SETUP (one-time):
+#   1. Create an Azure Resource Manager service connection named
+#      "sc-azure-d365fo-tools" in Project Settings > Service Connections.
+#   2. Create a variable group named "d365fo-cowork-secrets" in Pipelines >
+#      Library, and add these variables (mark them SECRET):
+#        - AZURE_TENANT_ID
+#        - AZURE_CLIENT_SECRET   (leave empty initially; pipeline outputs it
+#                                 on first run — then store it here)
+#   3. Fork / push this repo to your Azure DevOps project.
+#   4. Create a new pipeline pointing at this file.
+# =============================================================================
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    exclude:
+      - "*.md"
+      - EXAMPLES.md
+
+pr: none   # disable PR builds; deploy only from main
+
+# Manual run with custom parameters
+parameters:
+  - name: resourceGroup
+    displayName: "Azure Resource Group"
+    type: string
+    default: "rg-d365fo-tools"
+  - name: location
+    displayName: "Azure Region"
+    type: string
+    default: "westeurope"
+  - name: acrName
+    displayName: "Azure Container Registry name (globally unique, no dashes)"
+    type: string
+    default: "acrD365FoTools"
+  - name: appName
+    displayName: "Container App name"
+    type: string
+    default: "d365fo-mcp"
+  - name: environmentName
+    displayName: "Container Apps Environment name"
+    type: string
+    default: "cae-d365fo-tools"
+  - name: imageTag
+    displayName: "Docker image tag"
+    type: string
+    default: "$(Build.BuildNumber)"
+
+variables:
+  - group: d365fo-cowork-secrets   # AZURE_TENANT_ID, AZURE_CLIENT_SECRET
+  - name: IMAGE_NAME
+    value: "${{ parameters.acrName }}.azurecr.io/${{ parameters.appName }}"
+  - name: IMAGE_TAG
+    value: "${{ parameters.imageTag }}"
+
+# ---------------------------------------------------------------------------
+# Stage 1 — Build the SQLite metadata index
+#   Runs on a Windows agent that has PackagesLocalDirectory access.
+#   If your build agents do not have D365FO installed, comment out this stage
+#   and supply the index as a Secure File (see note below).
+# ---------------------------------------------------------------------------
+stages:
+  - stage: BuildIndex
+    displayName: "1 — Build D365FO metadata index"
+    pool:
+      vmImage: windows-latest    # or a self-hosted agent with D365FO installed
+    jobs:
+      - job: BuildMetadataIndex
+        displayName: "Clone d365fo-cli and build index"
+        steps:
+          - task: UseDotNet@2
+            displayName: "Install .NET SDK 10"
+            inputs:
+              packageType: sdk
+              version: "10.x"
+              installationPath: $(Agent.ToolsDirectory)/dotnet
+
+          - script: |
+              git clone --depth 1 https://github.com/AurelienClere-365/d365fo-cli.git $(Agent.TempDirectory)\d365fo-cli
+              cd $(Agent.TempDirectory)\d365fo-cli
+              dotnet build d365fo-cli.slnx -c Release
+            displayName: "Clone and build d365fo-cli"
+
+          - powershell: |
+              # Set up alias so subsequent steps can call d365fo directly
+              $cliProject = "$(Agent.TempDirectory)\d365fo-cli\src\D365FO.Cli"
+              function Invoke-D365FoCli { dotnet run --project $cliProject -- @args }
+              Set-Alias d365fo Invoke-D365FoCli -Scope Global
+
+              # Verify the tool is working
+              dotnet run --project $cliProject -- --version
+            displayName: "Verify d365fo-cli"
+
+          - powershell: |
+              # ---------------------------------------------------------------
+              # If this agent has PackagesLocalDirectory access, set the path:
+              # $env:D365FO_PACKAGES_PATH = "K:\AosService\PackagesLocalDirectory"
+              # ---------------------------------------------------------------
+              # Otherwise: supply d365fo-index.sqlite as a Secure File
+              # in Pipelines > Library > Secure Files, and use the
+              # DownloadSecureFile task below instead of building here.
+              # ---------------------------------------------------------------
+              $cliProject = "$(Agent.TempDirectory)\d365fo-cli\src\D365FO.Cli"
+              $env:D365FO_PACKAGES_PATH = "$(D365FO_PACKAGES_PATH)"  # pipeline variable
+
+              dotnet run --project $cliProject -- index build
+              dotnet run --project $cliProject -- index extract
+              dotnet run --project $cliProject -- doctor --output json
+            displayName: "Build and extract metadata index"
+            env:
+              D365FO_PACKAGES_PATH: $(D365FO_PACKAGES_PATH)   # add to variable group
+
+          - powershell: |
+              # Copy index to repo root so the Dockerfile COPY picks it up
+              $indexPath = "$env:LOCALAPPDATA\d365fo-cli\d365fo-index.sqlite"
+              if (-not (Test-Path $indexPath)) {
+                  Write-Error "Index not found at $indexPath — was 'd365fo index build' successful?"
+                  exit 1
+              }
+              Copy-Item $indexPath "$(Build.SourcesDirectory)\d365fo-index.sqlite"
+              Write-Host "Index size: $((Get-Item '$(Build.SourcesDirectory)\d365fo-index.sqlite').Length / 1MB) MB"
+            displayName: "Copy index to repo root"
+
+          - publish: "$(Build.SourcesDirectory)/d365fo-index.sqlite"
+            artifact: d365fo-index
+            displayName: "Publish index as pipeline artifact"
+
+  # ---------------------------------------------------------------------------
+  # Alternative for agents WITHOUT D365FO installed:
+  # Comment out BuildIndex above and uncomment this to use a pre-built index
+  # uploaded as a Secure File in Pipelines > Library > Secure Files.
+  # ---------------------------------------------------------------------------
+  # - stage: ProvideIndex
+  #   displayName: "1 — Provide pre-built index (Secure File)"
+  #   pool:
+  #     vmImage: ubuntu-latest
+  #   jobs:
+  #     - job: DownloadIndex
+  #       steps:
+  #         - task: DownloadSecureFile@1
+  #           name: secureIndex
+  #           inputs:
+  #             secureFile: "d365fo-index.sqlite"
+  #         - publish: "$(secureIndex.secureFilePath)"
+  #           artifact: d365fo-index
+
+  # ---------------------------------------------------------------------------
+  # Stage 2 — Build and push Docker image via ACR Tasks
+  #   No Docker daemon required on the agent.
+  # ---------------------------------------------------------------------------
+  - stage: BuildAndPushImage
+    displayName: "2 — Build Docker image (ACR Tasks)"
+    dependsOn: BuildIndex
+    pool:
+      vmImage: ubuntu-latest
+    jobs:
+      - job: AcrBuild
+        displayName: "az acr build"
+        steps:
+          - task: AzureCLI@2
+            displayName: "Create resource group and ACR (idempotent)"
+            inputs:
+              azureSubscription: "sc-azure-d365fo-tools"
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                az group create \
+                  --name "${{ parameters.resourceGroup }}" \
+                  --location "${{ parameters.location }}" \
+                  --output none
+
+                if ! az acr show --name "${{ parameters.acrName }}" \
+                      --resource-group "${{ parameters.resourceGroup }}" &>/dev/null; then
+                  az acr create \
+                    --name "${{ parameters.acrName }}" \
+                    --resource-group "${{ parameters.resourceGroup }}" \
+                    --sku Basic \
+                    --admin-enabled true \
+                    --output none
+                  echo "ACR created."
+                else
+                  echo "ACR already exists — skipping creation."
+                fi
+
+          - download: current
+            artifact: d365fo-index
+            displayName: "Download metadata index artifact"
+
+          - bash: |
+              cp "$(Pipeline.Workspace)/d365fo-index/d365fo-index.sqlite" \
+                 "$(Build.SourcesDirectory)/d365fo-index.sqlite"
+              ls -lh "$(Build.SourcesDirectory)/d365fo-index.sqlite"
+            displayName: "Copy index to source root"
+
+          - task: AzureCLI@2
+            displayName: "acr build — build and push image"
+            inputs:
+              azureSubscription: "sc-azure-d365fo-tools"
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                az acr build \
+                  --registry "${{ parameters.acrName }}" \
+                  --image "${{ parameters.appName }}:$(Build.BuildNumber)" \
+                  --image "${{ parameters.appName }}:latest" \
+                  --file Dockerfile \
+                  "$(Build.SourcesDirectory)"
+
+  # ---------------------------------------------------------------------------
+  # Stage 3 — Register Azure AD app (idempotent)
+  # ---------------------------------------------------------------------------
+  - stage: RegisterAzureAD
+    displayName: "3 — Azure AD app registration"
+    dependsOn: BuildAndPushImage
+    pool:
+      vmImage: ubuntu-latest
+    jobs:
+      - job: AppRegistration
+        displayName: "Create / verify app registration"
+        steps:
+          - task: AzureCLI@2
+            displayName: "Register app and create service principal"
+            name: appReg
+            inputs:
+              azureSubscription: "sc-azure-d365fo-tools"
+              scriptType: bash
+              scriptLocation: inlineScript
+              addSpnToEnvironment: true
+              inlineScript: |
+                APP_NAME="${{ parameters.appName }}-server"
+                IDENTIFIER_URI="api://${APP_NAME}"
+
+                EXISTING=$(az ad app list --display-name "$APP_NAME" \
+                             --query "[0].appId" -o tsv 2>/dev/null)
+
+                if [ -z "$EXISTING" ] || [ "$EXISTING" = "null" ]; then
+                  echo "Creating new app registration: $APP_NAME"
+                  APP_ID=$(az ad app create \
+                    --display-name "$APP_NAME" \
+                    --sign-in-audience AzureADMyOrg \
+                    --identifier-uris "$IDENTIFIER_URI" \
+                    --query appId -o tsv)
+
+                  az ad sp create --id "$APP_ID" --output none
+
+                  CLIENT_SECRET=$(az ad app credential reset \
+                    --id "$APP_ID" \
+                    --display-name "cowork-plugin-$(date +%Y%m)" \
+                    --query password -o tsv)
+
+                  echo "##vso[task.setvariable variable=CLIENT_ID;isOutput=true]$APP_ID"
+                  echo "##vso[task.setvariable variable=CLIENT_SECRET;isOutput=true;isSecret=true]$CLIENT_SECRET"
+                  echo "App registration created. CLIENT_ID=$APP_ID"
+                  echo "ACTION REQUIRED: Store the CLIENT_SECRET in the 'd365fo-cowork-secrets'"
+                  echo "  variable group as AZURE_CLIENT_SECRET for future pipeline runs."
+                else
+                  echo "App registration already exists. CLIENT_ID=$EXISTING"
+                  echo "##vso[task.setvariable variable=CLIENT_ID;isOutput=true]$EXISTING"
+                fi
+
+  # ---------------------------------------------------------------------------
+  # Stage 4 — Deploy Container App
+  # ---------------------------------------------------------------------------
+  - stage: DeployContainerApp
+    displayName: "4 — Deploy Azure Container App"
+    dependsOn:
+      - BuildAndPushImage
+      - RegisterAzureAD
+    variables:
+      CLIENT_ID: $[ stageDependencies.RegisterAzureAD.AppRegistration.outputs['appReg.CLIENT_ID'] ]
+    pool:
+      vmImage: ubuntu-latest
+    jobs:
+      - job: Deploy
+        displayName: "Create / update Container App"
+        steps:
+          - task: AzureCLI@2
+            displayName: "Create Container Apps Environment (idempotent)"
+            inputs:
+              azureSubscription: "sc-azure-d365fo-tools"
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                if ! az containerapp env show \
+                      --name "${{ parameters.environmentName }}" \
+                      --resource-group "${{ parameters.resourceGroup }}" &>/dev/null; then
+                  az containerapp env create \
+                    --name "${{ parameters.environmentName }}" \
+                    --resource-group "${{ parameters.resourceGroup }}" \
+                    --location "${{ parameters.location }}" \
+                    --output none
+                  echo "Environment created."
+                else
+                  echo "Environment already exists — skipping creation."
+                fi
+
+          - task: AzureCLI@2
+            displayName: "Create / update Container App"
+            name: deployStep
+            inputs:
+              azureSubscription: "sc-azure-d365fo-tools"
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                ACR_SERVER="${{ parameters.acrName }}.azurecr.io"
+                ACR_PASS=$(az acr credential show \
+                  --name "${{ parameters.acrName }}" \
+                  --query passwords[0].value -o tsv)
+
+                IMAGE="${ACR_SERVER}/${{ parameters.appName }}:$(Build.BuildNumber)"
+
+                EXISTING=$(az containerapp show \
+                  --name "${{ parameters.appName }}" \
+                  --resource-group "${{ parameters.resourceGroup }}" \
+                  --query name -o tsv 2>/dev/null)
+
+                if [ -z "$EXISTING" ]; then
+                  echo "Creating Container App..."
+                  az containerapp create \
+                    --name "${{ parameters.appName }}" \
+                    --resource-group "${{ parameters.resourceGroup }}" \
+                    --environment "${{ parameters.environmentName }}" \
+                    --image "$IMAGE" \
+                    --registry-server "$ACR_SERVER" \
+                    --registry-username "${{ parameters.acrName }}" \
+                    --registry-password "$ACR_PASS" \
+                    --target-port 8080 \
+                    --ingress external \
+                    --min-replicas 1 \
+                    --max-replicas 3 \
+                    --cpu 0.5 \
+                    --memory 1Gi \
+                    --output none
+                else
+                  echo "Updating existing Container App..."
+                  az containerapp update \
+                    --name "${{ parameters.appName }}" \
+                    --resource-group "${{ parameters.resourceGroup }}" \
+                    --image "$IMAGE" \
+                    --output none
+                fi
+
+                APP_URL=$(az containerapp show \
+                  --name "${{ parameters.appName }}" \
+                  --resource-group "${{ parameters.resourceGroup }}" \
+                  --query properties.configuration.ingress.fqdn -o tsv)
+
+                echo "##vso[task.setvariable variable=APP_URL;isOutput=true]https://$APP_URL"
+                echo "Container App URL: https://$APP_URL"
+
+  # ---------------------------------------------------------------------------
+  # Stage 5 — Enable Easy Auth (Azure AD)
+  # ---------------------------------------------------------------------------
+  - stage: EnableEasyAuth
+    displayName: "5 — Enable Azure AD Easy Auth"
+    dependsOn:
+      - DeployContainerApp
+      - RegisterAzureAD
+    variables:
+      CLIENT_ID: $[ stageDependencies.RegisterAzureAD.AppRegistration.outputs['appReg.CLIENT_ID'] ]
+      APP_URL: $[ stageDependencies.DeployContainerApp.Deploy.outputs['deployStep.APP_URL'] ]
+    pool:
+      vmImage: ubuntu-latest
+    jobs:
+      - job: EasyAuth
+        displayName: "Configure Easy Auth with OAuthPluginVault support"
+        steps:
+          - task: AzureCLI@2
+            displayName: "Enable Easy Auth — unauthenticated = 401"
+            inputs:
+              azureSubscription: "sc-azure-d365fo-tools"
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                TENANT=$(az account show --query tenantId -o tsv)
+                IDENTIFIER_URI="api://${{ parameters.appName }}-server"
+
+                az containerapp auth update \
+                  --name "${{ parameters.appName }}" \
+                  --resource-group "${{ parameters.resourceGroup }}" \
+                  --unauthenticated-client-action Return401 \
+                  --output none
+
+                az containerapp auth microsoft update \
+                  --name "${{ parameters.appName }}" \
+                  --resource-group "${{ parameters.resourceGroup }}" \
+                  --client-id "$(CLIENT_ID)" \
+                  --client-secret "$(AZURE_CLIENT_SECRET)" \
+                  --tenant-id "$TENANT" \
+                  --allowed-audiences "$IDENTIFIER_URI" \
+                  --output none
+
+                echo "Easy Auth enabled."
+                echo ""
+                echo "=========================================================="
+                echo " DEPLOYMENT COMPLETE"
+                echo "=========================================================="
+                echo " MCP Server URL : $(APP_URL)/mcp"
+                echo " Tenant ID      : $TENANT"
+                echo " Client ID      : $(CLIENT_ID)"
+                echo ""
+                echo " NEXT STEPS:"
+                echo "  1. Update manifest.json mcpServerUrl to: $(APP_URL)/mcp"
+                echo "  2. Register OAuthPluginVault credential in M365 Admin Center:"
+                echo "     https://admin.microsoft.com > Copilot > Plugin management"
+                echo "     > OAuth credentials > Add credential"
+                echo "     Tenant ID  : $TENANT"
+                echo "     Client ID  : $(CLIENT_ID)"
+                echo "     Scope      : $IDENTIFIER_URI/.default"
+                echo "  3. Run .\package.ps1 to rebuild the ZIP"
+                echo "  4. Sideload or deploy via M365 admin"
+                echo "=========================================================="

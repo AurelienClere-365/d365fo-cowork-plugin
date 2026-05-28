@@ -1,0 +1,19 @@
+# D365FO Cowork Plugin — code ownership
+# Format: <path pattern>  <@github-username> ...
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Global owners — all files
+*                       @AurelienClere-365 @LazeJanev
+
+# Skills — either owner can review
+skills/                 @AurelienClere-365 @LazeJanev
+
+# CI/CD and infra — both must approve
+azure-pipelines.yml     @AurelienClere-365 @LazeJanev
+Dockerfile              @AurelienClere-365 @LazeJanev
+deploy-azure.ps1        @AurelienClere-365 @LazeJanev
+.github/workflows/      @AurelienClere-365 @LazeJanev
+
+# Manifest and packaging
+manifest.json           @AurelienClere-365 @LazeJanev
+package.ps1             @AurelienClere-365 @LazeJanev

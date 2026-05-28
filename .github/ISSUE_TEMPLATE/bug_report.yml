@@ -1,0 +1,80 @@
+name: Bug report
+description: Something is broken or not working as expected
+title: "[Bug] "
+labels: ["bug"]
+assignees:
+  - AurelienClere-365
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill in as much detail as possible.
+  - type: dropdown
+    id: skill
+    attributes:
+      label: Which skill is affected?
+      options:
+        - d365fo-table-search
+        - d365fo-class-analysis
+        - d365fo-data-entity-discovery
+        - d365fo-security-coverage
+        - d365fo-extension-strategy
+        - d365fo-label-search
+        - d365fo-enum-edt
+        - d365fo-form-navigation
+        - d365fo-query-view
+        - d365fo-business-events
+        - d365fo-integration-services
+        - d365fo-batch-runbase
+        - d365fo-report-discovery
+        - d365fo-model-architecture
+        - package.ps1 / validation
+        - azure-pipelines.yml
+        - deploy-azure.ps1
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: ai_assistant
+    attributes:
+      label: Which AI assistant?
+      options:
+        - GitHub Copilot (VS Code)
+        - Claude Code
+        - Cursor
+        - Continue.dev
+        - Gemini CLI
+        - JetBrains Junie
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      placeholder: Describe the bug clearly.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Prompt used: ...
+        2. Response received: ...
+        3. Error or unexpected behaviour: ...
+  - type: textarea
+    id: context
+    attributes:
+      label: Environment
+      placeholder: |
+        - d365fo-cli version: (run `d365fo --version`)
+        - D365FO version: (e.g. 10.0.39)
+        - Plugin version: (from CHANGELOG.md)
+        - OS: Windows 11

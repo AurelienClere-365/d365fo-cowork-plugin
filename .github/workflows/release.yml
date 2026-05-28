@@ -1,0 +1,53 @@
+name: Release plugin package
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write   # needed to create releases
+
+jobs:
+  release:
+    name: Build and publish GitHub Release
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run package.ps1
+        shell: pwsh
+        run: |
+          $result = .\package.ps1 2>&1
+          $result | Write-Host
+          if ($result -match "FAIL") {
+            Write-Error "Package validation failed — release aborted."
+            exit 1
+          }
+
+      - name: Extract version from tag
+        id: version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          echo "tag=$tag" >> $env:GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "D365FO Cowork Plugin ${{ steps.version.outputs.tag }}"
+          body: |
+            ## D365FO Cowork Plugin ${{ steps.version.outputs.tag }}
+
+            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)
+            for full release notes.
+
+            ### Install
+            1. Download `d365fo-cowork-plugin.zip` below
+            2. Go to **Microsoft 365 Copilot > Plugins > Upload plugin**
+               (or M365 Admin Center > Integrated apps for org-wide install)
+          files: d365fo-cowork-plugin.zip
+          draft: false
+          prerelease: false
