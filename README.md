@@ -14,11 +14,7 @@ security objects, and labels — all grounded in your actual D365FO metadata ind
 The enriched spec is then handed directly to the MCP X++ Dev agent or CLI Cloud Agent
 for code generation.
 
-```
-Workshop ──► SFD draft  ──►  Cowork enrichment  ──►  Technical Spec  ──►  Dev Agent
-             (business)       (this plugin)           (SFD + D365FO       (MCP X++ Dev /
-                                                        metadata)           CLI Cloud Agent)
-```
+![D365FO Cowork Plugin — Architecture & Workflow](docs/architecture.png)
 
 **Example questions you can ask:**
 
