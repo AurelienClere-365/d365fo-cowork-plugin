@@ -133,24 +133,28 @@ Write-Host "All validations passed." -ForegroundColor Green
 Write-Host ""
 
 # ---------------------------------------------------------------------------
-# Collect files to pack
-# ---------------------------------------------------------------------------
-$itemsToAdd = [System.Collections.Generic.List[string]]::new()
-$itemsToAdd.Add((Join-Path $root "manifest.json"))
-foreach ($file in @("d365fo-mcp-tools.json", "color.png", "outline.png")) {
-    $p = Join-Path $root $file
-    if (Test-Path $p) { $itemsToAdd.Add($p) }
-}
-Get-ChildItem (Join-Path $root "skills") -Recurse -File | ForEach-Object {
-    $itemsToAdd.Add($_.FullName)
-}
-
-# ---------------------------------------------------------------------------
-# Create ZIP
+# Build ZIP via temp directory to preserve skills/ folder structure
 # ---------------------------------------------------------------------------
 if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
 
-Compress-Archive -Path $itemsToAdd.ToArray() -DestinationPath $zipPath -Force
+$tempDir = Join-Path $env:TEMP "d365fo-cowork-pkg-$(New-Guid)"
+New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+
+foreach ($file in @('manifest.json','d365fo-mcp-tools.json','color.png','outline.png',
+                     'README.md','CHANGELOG.md','CONTRIBUTING.md','PRIVACY.md',
+                     'SECURITY.md','LICENSE','EXAMPLES.md')) {
+    $src = Join-Path $root $file
+    if (Test-Path $src) { Copy-Item $src $tempDir }
+}
+
+# Copy skills/ preserving full directory tree
+$skillsSrc = Join-Path $root "skills"
+if (Test-Path $skillsSrc) {
+    Copy-Item $skillsSrc (Join-Path $tempDir "skills") -Recurse
+}
+
+Compress-Archive -Path "$tempDir\*" -DestinationPath $zipPath
+Remove-Item $tempDir -Recurse -Force
 
 $sizeKb = [math]::Round((Get-Item $zipPath).Length / 1KB, 1)
 Write-Host ("Package created: {0}  ({1} KB)" -f $zipPath, $sizeKb) -ForegroundColor Green
