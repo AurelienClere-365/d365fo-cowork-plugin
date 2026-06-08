@@ -1,0 +1,5 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/copilot-plugin-sdk/main/schemas/mcp-tool-description.schema.json",
+  "version": "2.1",
+  "functions": []
+}

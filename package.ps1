@@ -58,33 +58,33 @@ Write-Host ""
 # P001 - Each agentSkills folder exists
 # ---------------------------------------------------------------------------
 Write-Host "P001  Folder exists" -ForegroundColor DarkCyan
-foreach ($skillPath in $skills) {
-    $fullPath = Join-Path $root $skillPath
-    Test-Rule "P001" (Test-Path $fullPath -PathType Container) "Folder not found: $skillPath"
+foreach ($skill in $skills) {
+    $fullPath = Join-Path $root $skill.folder.Replace('/', '\')
+    Test-Rule "P001" (Test-Path $fullPath -PathType Container) "Folder not found: $($skill.folder)"
 }
 
 # ---------------------------------------------------------------------------
 # P002 - Each folder contains SKILL.md
 # ---------------------------------------------------------------------------
 Write-Host "P002  SKILL.md present" -ForegroundColor DarkCyan
-foreach ($skillPath in $skills) {
-    $mdPath = Join-Path (Join-Path $root $skillPath) "SKILL.md"
-    Test-Rule "P002" (Test-Path $mdPath) "SKILL.md missing in: $skillPath"
+foreach ($skill in $skills) {
+    $mdPath = Join-Path (Join-Path $root $skill.folder.Replace('/', '\')) "SKILL.md"
+    Test-Rule "P002" (Test-Path $mdPath) "SKILL.md missing in: $($skill.folder)"
 }
 
 # ---------------------------------------------------------------------------
 # P003-P007 - Frontmatter checks per skill
 # ---------------------------------------------------------------------------
 Write-Host "P003-P007  Frontmatter" -ForegroundColor DarkCyan
-foreach ($skillPath in $skills) {
-    $mdPath = Join-Path (Join-Path $root $skillPath) "SKILL.md"
+foreach ($skill in $skills) {
+    $mdPath = Join-Path (Join-Path $root $skill.folder.Replace('/', '\')) "SKILL.md"
     if (-not (Test-Path $mdPath)) { continue }
 
     $content = [IO.File]::ReadAllText($mdPath)
 
     # P003 - has --- delimiters
     $hasFm = $content -match '(?s)^---\s*\r?\n.*?\r?\n---'
-    Test-Rule "P003" $hasFm "No valid YAML frontmatter (--- delimiters) in: $skillPath/SKILL.md"
+    Test-Rule "P003" $hasFm "No valid YAML frontmatter (--- delimiters) in: $($skill.folder)/SKILL.md"
 
     if (-not $hasFm) { continue }
 
@@ -92,30 +92,30 @@ foreach ($skillPath in $skills) {
 
     # P004 - has name field
     $nameMatch = [regex]::Match($fmBlock, '(?m)^name:\s*(\S+)')
-    Test-Rule "P004" $nameMatch.Success "No 'name' field in frontmatter: $skillPath/SKILL.md"
+    Test-Rule "P004" $nameMatch.Success "No 'name' field in frontmatter: $($skill.folder)/SKILL.md"
 
     # P005 - has description field
     $hasDesc = $fmBlock -match '(?m)^description:'
-    Test-Rule "P005" $hasDesc "No 'description' field in frontmatter: $skillPath/SKILL.md"
+    Test-Rule "P005" $hasDesc "No 'description' field in frontmatter: $($skill.folder)/SKILL.md"
 
     if (-not $nameMatch.Success) { continue }
     $nameValue  = $nameMatch.Groups[1].Value.Trim().Trim('"').Trim("'")
-    $folderName = Split-Path $skillPath -Leaf
+    $folderName = Split-Path $skill.folder -Leaf
 
     # P006 - name matches folder (case-sensitive)
     Test-Rule "P006" ($nameValue -ceq $folderName) `
-        "name '$nameValue' != folder '$folderName' (case-sensitive): $skillPath/SKILL.md"
+        "name '$nameValue' != folder '$folderName' (case-sensitive): $($skill.folder)/SKILL.md"
 
     # P007 - name is kebab-case
     Test-Rule "P007" ($nameValue -cmatch '^[a-z][a-z0-9]*(-[a-z0-9]+)*$') `
-        "name '$nameValue' is not valid kebab-case: $skillPath/SKILL.md"
+        "name '$nameValue' is not valid kebab-case: $($skill.folder)/SKILL.md"
 }
 
 # ---------------------------------------------------------------------------
 # P008 - No duplicate folder entries
 # ---------------------------------------------------------------------------
 Write-Host "P008  No duplicates" -ForegroundColor DarkCyan
-$dupes = @($skills | Group-Object | Where-Object { $_.Count -gt 1 })
+$dupes = @($skills | Group-Object { $_.folder } | Where-Object { $_.Count -gt 1 })
 $dupesMsg = if ($dupes.Count -gt 0) { "Duplicate agentSkills entries: $(($dupes | ForEach-Object { $_.Name }) -join ', ')" } else { "" }
 Test-Rule "P008" ($dupes.Count -eq 0) $dupesMsg
 
@@ -137,8 +137,8 @@ Write-Host ""
 # ---------------------------------------------------------------------------
 $itemsToAdd = [System.Collections.Generic.List[string]]::new()
 $itemsToAdd.Add((Join-Path $root "manifest.json"))
-foreach ($png in @("color.png", "outline.png")) {
-    $p = Join-Path $root $png
+foreach ($file in @("d365fo-mcp-tools.json", "color.png", "outline.png")) {
+    $p = Join-Path $root $file
     if (Test-Path $p) { $itemsToAdd.Add($p) }
 }
 Get-ChildItem (Join-Path $root "skills") -Recurse -File | ForEach-Object {
@@ -156,6 +156,6 @@ $sizeKb = [math]::Round((Get-Item $zipPath).Length / 1KB, 1)
 Write-Host ("Package created: {0}  ({1} KB)" -f $zipPath, $sizeKb) -ForegroundColor Green
 Write-Host ""
 Write-Host "Install options:"
-Write-Host "  Personal   : Microsoft 365 Copilot > Plugins > Upload plugin"
-Write-Host "  Org-wide   : M365 Admin Center > Integrated apps > Upload custom app"
+Write-Host "  Sideload   : admin.microsoft.com > Manage apps > Upload custom app"
+Write-Host "  Org-wide   : admin.microsoft.com > Copilot > Agents > All agents > Deploy"
 Write-Host ""
