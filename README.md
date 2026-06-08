@@ -464,17 +464,20 @@ This validates all skills (rules P001-P008) and creates `d365fo-cowork-plugin.zi
 > The Frontier toggle must also be ON in M365 Admin Center → **Copilot** → **Settings** → **Frontier**.
 
 **Sideload (personal test):**
-1. Go to [admin.microsoft.com](https://admin.microsoft.com) → **Manage apps**
-2. Click **Upload custom app** → select `d365fo-cowork-plugin.zip`
-3. Open Microsoft 365 Copilot — the plugin appears in the **Sources & Skills** panel (toggle it on)
+1. Go to [admin.microsoft.com](https://admin.microsoft.com) → **Agents** → **All agents**
+2. Click the **`...`** menu (top-right of the agent list) → **Add agent**
+3. Upload `d365fo-cowork-plugin.zip`
+4. Open Microsoft 365 Copilot — the plugin appears in the **Sources & Skills** panel (toggle it on)
 
 **Org-wide deploy:**
-1. Go to [admin.microsoft.com](https://admin.microsoft.com) → **Copilot** → **Agents** → **All agents**
-2. Click **Deploy** → select `d365fo-cowork-plugin.zip`
-3. Assign to users or groups — the plugin appears automatically in users' Sources & Skills panel
+1. Go to [admin.microsoft.com](https://admin.microsoft.com) → **Agents** → **All agents**
+2. Click the **`...`** menu → **Add agent** → upload `d365fo-cowork-plugin.zip`
+3. Once added, find **D365FO Cowork** in the list, open it, and under **Deploy to** select
+   **Entire organisation** or **Specific users/groups** → click **Deploy**
+4. The plugin appears automatically in users' Sources & Skills panel
 
 **Updating an existing deployment:**
-1. Go to **Copilot** → **Agents** → **All agents** → find the plugin
+1. Go to **Agents** → **All agents** → find **D365FO Cowork**
 2. Click **Update** → upload the new ZIP
 
 ---
