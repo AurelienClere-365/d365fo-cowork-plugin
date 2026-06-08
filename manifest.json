@@ -14,7 +14,7 @@
     "full": "D365FO Cowork Plugin by Aurelien Clere & Laze Janev"
   },
   "description": {
-    "short": "Search D365FO tables, classes, entities, security, and labels with natural language.",
+    "short": "Search D365FO tables, classes, entities and labels with natural language.",
     "full": "Query D365FO metadata with natural language. Find table fields, relations, class hierarchies, data entities, security privileges, and labels without leaving your AI assistant. Powered by the D365FO CLI SQLite index."
   },
   "icons": {
@@ -45,7 +45,7 @@
       "description": "Remote MCP connector to the D365FO CLI metadata search server hosted on Azure Container Apps.",
       "toolSource": {
         "remoteMcpServer": {
-          "mcpServerUrl": "REPLACE_WITH_YOUR_AZURE_CONTAINER_APP_URL/mcp",
+          "mcpServerUrl": "https://d365fo-mcp.example.azurecontainerapps.io/mcp",
           "mcpToolDescription": { "file": "d365fo-mcp-tools.json" },
           "authorization": {
             "type": "OAuthPluginVault",
