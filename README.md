@@ -464,18 +464,80 @@ This validates all skills (rules P001-P008) and creates `d365fo-cowork-plugin.zi
 > The Frontier toggle must also be ON in M365 Admin Center → **Copilot** → **Settings** → **Frontier**.
 
 **Sideload (personal test):**
-1. Go to [admin.microsoft.com](https://admin.microsoft.com) → **Manage apps**
-2. Click **Upload custom app** → select `d365fo-cowork-plugin.zip`
-3. Open Microsoft 365 Copilot — the plugin appears in the **Sources & Skills** panel (toggle it on)
+1. Go to [admin.microsoft.com](https://admin.microsoft.com) → **Agents** → **All agents**
+2. Click the **`...`** menu (top-right of the agent list) → **Add agent**
+3. Upload `d365fo-cowork-plugin.zip`
+4. Open Microsoft 365 Copilot — the plugin appears in the **Sources & Skills** panel (toggle it on)
 
 **Org-wide deploy:**
-1. Go to [admin.microsoft.com](https://admin.microsoft.com) → **Copilot** → **Agents** → **All agents**
-2. Click **Deploy** → select `d365fo-cowork-plugin.zip`
-3. Assign to users or groups — the plugin appears automatically in users' Sources & Skills panel
+1. Go to [admin.microsoft.com](https://admin.microsoft.com) → **Agents** → **All agents**
+2. Click the **`...`** menu → **Add agent** → upload `d365fo-cowork-plugin.zip`
+3. Once added, find **D365FO Cowork** in the list, open it, and under **Deploy to** select
+   **Entire organisation** or **Specific users/groups** → click **Deploy**
+4. The plugin appears automatically in users' Sources & Skills panel
 
 **Updating an existing deployment:**
-1. Go to **Copilot** → **Agents** → **All agents** → find the plugin
+1. Go to **Agents** → **All agents** → find **D365FO Cowork**
 2. Click **Update** → upload the new ZIP
+
+### Step 6: Configure OAuthPluginVault (required for MCP tools to work)
+
+> **Important:** Without OAuthPluginVault, Cowork cannot inject a Bearer token into
+> calls to your Container App. Easy Auth will reject every request with HTTP 401 and
+> the MCP tools will not fire. Complete this step after Step 2 (Azure deployment).
+
+#### 6a — Get the values from deploy-azure.ps1 output
+
+`deploy-azure.ps1` prints everything you need at the end of its run:
+
+```
+Client ID     : xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+Client Secret : <secret value>   ← copy immediately, shown once
+Tenant ID     : xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+MCP Server URL: https://d365fo-mcp.kindsky-xxx.westeurope.azurecontainerapps.io/mcp
+Scope         : api://d365fo-mcp-server/.default
+```
+
+Store the client secret in Azure Key Vault immediately after copying — it is never
+written to any file in this repo.
+
+#### 6b — Register the OAuth credential in M365 Admin Center
+
+Must be done by a **Global Admin or Copilot Admin**.
+
+1. Go to [admin.microsoft.com](https://admin.microsoft.com) → **Settings** → **Copilot**
+   → **Plugin management**
+2. Click **Add OAuth credential** and fill in:
+
+| Field | Value |
+|---|---|
+| Client ID | from deploy-azure.ps1 output |
+| Client secret | from deploy-azure.ps1 output |
+| Token URL | `https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token` |
+| Scope | `api://d365fo-mcp-server/.default` (or as printed by the script) |
+
+3. Save — copy the **Vault reference ID** shown.
+
+#### 6c — Update manifest.json and redeploy
+
+```json
+"authorization": {
+  "type": "OAuthPluginVault",
+  "referenceId": "YOUR_VAULT_REFERENCE_ID"  // paste from step 6b
+}
+```
+
+Also replace `mcpServerUrl` with the real URL from deploy-azure.ps1:
+
+```json
+"mcpServerUrl": "https://d365fo-mcp.kindsky-xxx.westeurope.azurecontainerapps.io/mcp"
+```
+
+Then bump `"version"` in `manifest.json`, run `.\.package.ps1`, and update the plugin
+(**Agents → All agents → D365FO Cowork → Update**).
+
+After updating, Cowork will prompt each user to consent once; tokens are then stored and
+re-injected automatically on every call to the Container App.
 
 ---
 
@@ -541,11 +603,11 @@ you registered in M365 Copilot admin, and attach it to every call to the MCP ser
 
 ### Registering the OAuth credential in M365 Copilot Admin
 
-This step cannot be scripted — it must be done by a Global Administrator or Copilot
-admin in the M365 admin center. `deploy-azure.ps1` prints all the values you need.
+See **Step 6b** above for the full procedure. `deploy-azure.ps1` prints all the values
+you need. Quick reference:
 
-1. Go to **https://admin.microsoft.com** > **Settings** > **Copilot** > **Plugin management**
-2. Click **Add OAuth credential** and enter:
+1. Go to [admin.microsoft.com](https://admin.microsoft.com) → **Settings** → **Copilot** → **Plugin management**
+2. Click **Add OAuth credential** and enter the values printed by `deploy-azure.ps1`:
 
 | Field | Value (from deploy-azure.ps1 output) |
 |---|---|
