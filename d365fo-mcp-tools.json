@@ -1,5 +1,24 @@
 {
   "$schema": "https://raw.githubusercontent.com/microsoft/copilot-plugin-sdk/main/schemas/mcp-tool-description.schema.json",
   "version": "2.1",
-  "functions": []
+  "tools": [
+    { "name": "search_tables",    "description": "Search D365FO tables by name or keyword in the metadata index." },
+    { "name": "get_table_info",    "description": "Get fields, relations, EDT types and indexes for a D365FO table." },
+    { "name": "search_classes",   "description": "Search X++ classes by name or base class in the metadata index." },
+    { "name": "get_class_info",   "description": "Get methods, hierarchy and CoC extension points for an X++ class." },
+    { "name": "search_entities",  "description": "Search D365FO data entities by name or mapped table." },
+    { "name": "get_entity_info",  "description": "Get fields, staging table and DMF configuration for a data entity." },
+    { "name": "search_labels",    "description": "Search D365FO label files by text or label ID." },
+    { "name": "get_label_info",   "description": "Get the text and label file location for a specific label ID." },
+    { "name": "search_security",  "description": "Search security objects (duties, privileges, roles) by name." },
+    { "name": "get_security_info","description": "Get permissions and entry points for a security duty or privilege." },
+    { "name": "search_enums",     "description": "Search X++ base enums by name in the metadata index." },
+    { "name": "get_enum_info",    "description": "Get values and EDT associations for a D365FO base enum." },
+    { "name": "search_edts",      "description": "Search extended data types (EDTs) by name or base type." },
+    { "name": "get_edt_info",     "description": "Get properties and extends chain for an EDT." },
+    { "name": "search_forms",     "description": "Search D365FO forms by name in the metadata index." },
+    { "name": "get_form_info",    "description": "Get data sources, controls and menu item bindings for a form." },
+    { "name": "search_reports",   "description": "Search SSRS reports by name in the metadata index." },
+    { "name": "get_model_info",   "description": "Get model descriptor, dependencies and layer for a D365FO model." }
+  ]
 }
