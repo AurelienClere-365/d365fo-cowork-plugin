@@ -74,6 +74,8 @@ d365fo-cowork-plugin/
 | d365fo-cli built | Not needed | Required | Required (index baked into image) |
 | D365FO index built | Not needed | Required | Required |
 | Azure subscription | Not needed | Not needed | Required |
+| M365 Global / Copilot Admin | Not needed | Not needed | Required (one-time) |
+| Frontier preview program | Not needed | Not needed | Required |
 
 ---
 
@@ -426,13 +428,22 @@ MCP Server URL: https://d365fo-mcp.kindsky-xxx.westeurope.azurecontainerapps.io/
 
 ### Step 3: Update manifest.json
 
-Open `manifest.json` and replace the `mcpServerUrl` placeholder:
+Open `manifest.json` and replace the `mcpServerUrl` placeholder. The connector block
+should look like this after your deployment:
 
 ```json
 "agentConnectors": [{
+  "id": "d365fo-cli-connector",
+  "displayName": "D365FO CLI MCP",
+  "description": "Remote MCP connector to the D365FO CLI metadata search server hosted on Azure Container Apps.",
   "toolSource": {
     "remoteMcpServer": {
-      "mcpServerUrl": "https://d365fo-mcp.kindsky-xxx.westeurope.azurecontainerapps.io/mcp"
+      "mcpServerUrl": "https://d365fo-mcp.kindsky-xxx.westeurope.azurecontainerapps.io/mcp",
+      "mcpToolDescription": { "file": "d365fo-mcp-tools.json" },
+      "authorization": {
+        "type": "OAuthPluginVault",
+        "referenceId": "REPLACE_WITH_VAULT_REFERENCE_ID"
+      }
     }
   }
 }]
@@ -450,16 +461,21 @@ This validates all skills (rules P001-P008) and creates `d365fo-cowork-plugin.zi
 
 > **Note:** Cowork is a Microsoft 365 Frontier preview. Enroll at
 > https://adoption.microsoft.com/copilot/frontier-program before installing.
+> The Frontier toggle must also be ON in M365 Admin Center → **Copilot** → **Settings** → **Frontier**.
 
-**Sideload (personal):**
-1. Open Microsoft 365 Copilot
-2. Go to **Plugins** > **Upload plugin**
-3. Select `d365fo-cowork-plugin.zip`
+**Sideload (personal test):**
+1. Go to [admin.microsoft.com](https://admin.microsoft.com) → **Manage apps**
+2. Click **Upload custom app** → select `d365fo-cowork-plugin.zip`
+3. Open Microsoft 365 Copilot — the plugin appears in the **Sources & Skills** panel (toggle it on)
 
 **Org-wide deploy:**
-1. Go to Microsoft 365 Admin Center > **Integrated apps**
-2. Click **Upload custom app** > select `d365fo-cowork-plugin.zip`
-3. Assign to users or groups
+1. Go to [admin.microsoft.com](https://admin.microsoft.com) → **Copilot** → **Agents** → **All agents**
+2. Click **Deploy** → select `d365fo-cowork-plugin.zip`
+3. Assign to users or groups — the plugin appears automatically in users' Sources & Skills panel
+
+**Updating an existing deployment:**
+1. Go to **Copilot** → **Agents** → **All agents** → find the plugin
+2. Click **Update** → upload the new ZIP
 
 ---
 
@@ -512,14 +528,14 @@ What this prevents:
 
 ### Layer 2 — OAuthPluginVault (Cowork token injection)
 
-In `manifest.json`, the `agentConnectors` entry includes an `auth.oAuthPluginVaultId`.
+In `manifest.json`, the `agentConnectors` entry includes an `authorization.referenceId`.
 This tells Cowork to automatically obtain a Bearer token using the client credentials
 you registered in M365 Copilot admin, and attach it to every call to the MCP server.
 
 ```json
-"auth": {
+"authorization": {
   "type": "OAuthPluginVault",
-  "oAuthPluginVaultId": "REPLACE_WITH_VAULT_REFERENCE_ID"
+  "referenceId": "REPLACE_WITH_VAULT_REFERENCE_ID"
 }
 ```
 
@@ -539,7 +555,7 @@ admin in the M365 admin center. `deploy-azure.ps1` prints all the values you nee
 | Scope | `api://<appName>-server/.default` |
 
 3. Save — copy the **Vault reference ID** shown.
-4. Paste the vault ID into `manifest.json` at `oAuthPluginVaultId`.
+4. Paste the vault ID into `manifest.json` at `authorization.referenceId`.
 5. Run `.\package.ps1` and re-upload the ZIP.
 
 ### What is NOT protected
@@ -580,7 +596,7 @@ az ad app credential reset --id <clientId> --years 2
 ## Adding a new skill
 
 1. Create `skills/your-skill-name/SKILL.md` — `name` in frontmatter must equal `your-skill-name` exactly.
-2. Add `"skills/your-skill-name"` to the `agentSkills` array in `manifest.json`.
+2. Add `{ "folder": "./skills/your-skill-name" }` to the `agentSkills` array in `manifest.json`.
 3. Run `.\package.ps1` — validates and repackages automatically.
 4. Test in VS Code agent mode before distributing.
 

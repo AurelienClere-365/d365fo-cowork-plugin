@@ -3,7 +3,6 @@
   "manifestVersion": "1.28",
   "version": "1.0.0",
   "id": "c7a3f9e2-4b6d-5080-9c1e-d365f0caf001",
-  "packageName": "com.d365fo.cowork-plugin",
   "developer": {
     "name": "Aurelien Clere & Laze Janev",
     "websiteUrl": "https://github.com/AurelienClere-365/d365fo-cowork-plugin",
@@ -24,32 +23,33 @@
   },
   "accentColor": "#0d3068",
   "agentSkills": [
-    "skills/d365fo-table-search",
-    "skills/d365fo-class-analysis",
-    "skills/d365fo-data-entity-discovery",
-    "skills/d365fo-security-coverage",
-    "skills/d365fo-extension-strategy",
-    "skills/d365fo-label-search",
-    "skills/d365fo-enum-edt",
-    "skills/d365fo-form-navigation",
-    "skills/d365fo-query-view",
-    "skills/d365fo-business-events",
-    "skills/d365fo-integration-services",
-    "skills/d365fo-batch-runbase",
-    "skills/d365fo-report-discovery",
-    "skills/d365fo-model-architecture"
+    { "folder": "./skills/d365fo-table-search" },
+    { "folder": "./skills/d365fo-class-analysis" },
+    { "folder": "./skills/d365fo-data-entity-discovery" },
+    { "folder": "./skills/d365fo-security-coverage" },
+    { "folder": "./skills/d365fo-extension-strategy" },
+    { "folder": "./skills/d365fo-label-search" },
+    { "folder": "./skills/d365fo-enum-edt" },
+    { "folder": "./skills/d365fo-form-navigation" },
+    { "folder": "./skills/d365fo-query-view" },
+    { "folder": "./skills/d365fo-business-events" },
+    { "folder": "./skills/d365fo-integration-services" },
+    { "folder": "./skills/d365fo-batch-runbase" },
+    { "folder": "./skills/d365fo-report-discovery" },
+    { "folder": "./skills/d365fo-model-architecture" }
   ],
   "agentConnectors": [
     {
       "id": "d365fo-cli-connector",
-      "name": "D365FO CLI MCP",
+      "displayName": "D365FO CLI MCP",
       "description": "Remote MCP connector to the D365FO CLI metadata search server hosted on Azure Container Apps.",
       "toolSource": {
         "remoteMcpServer": {
           "mcpServerUrl": "REPLACE_WITH_YOUR_AZURE_CONTAINER_APP_URL/mcp",
-          "auth": {
+          "mcpToolDescription": { "file": "d365fo-mcp-tools.json" },
+          "authorization": {
             "type": "OAuthPluginVault",
-            "oAuthPluginVaultId": "REPLACE_WITH_VAULT_REFERENCE_ID"
+            "referenceId": "REPLACE_WITH_VAULT_REFERENCE_ID"
           }
         }
       }
