@@ -443,6 +443,9 @@ Client Secret   : <value>  <-- STORE SECURELY
 Use `-Cleanup` to delete all Azure resources (ACR, Container App, Environment) and start
 fresh. The Azure AD app registration is preserved so the Client ID stays stable.
 
+> **Note:** ACR name deletion propagates globally — wait ~3 minutes after `-Cleanup`
+> before redeploying to avoid "name still reserved" errors.
+
 ```powershell
 # 1. Delete everything
 .\deploy-azure.ps1 -ResourceGroup "rg-d365fo-tools" -Location "northeurope" `
@@ -453,6 +456,24 @@ fresh. The Azure AD app registration is preserved so the Client ID stays stable.
 .\deploy-azure.ps1 -ResourceGroup "rg-d365fo-tools" -Location "northeurope" `
   -AcrName "acrd365fotools" -AppName "d365fo-mcp" -EnvironmentName "cae-d365fo-tools"
 ```
+
+#### Re-run smoke tests only — no redeploy
+
+Use `-TestOnly` to run the 4 smoke tests against the already-deployed app without
+rebuilding the image or touching any Azure resources. Useful after fixing Easy Auth
+or updating OAuth registration.
+
+```powershell
+.\deploy-azure.ps1 `
+  -ResourceGroup "rg-d365fo-tools" -Location "northeurope" `
+  -AcrName "acrd365fotools" -AppName "d365fo-mcp" -EnvironmentName "cae-d365fo-tools" `
+  -TestOnly `
+  -ClientId     "<Application (client) ID>" `
+  -ClientSecret "<client secret from deployment output>"
+```
+
+The `-ClientId` and `-ClientSecret` values are printed at the end of every full
+deployment run under **SECURE endpoint**.
 
 ### Step 3: Update manifest.json
 
