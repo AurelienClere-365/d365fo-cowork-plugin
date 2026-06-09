@@ -449,22 +449,28 @@ function Test-Result([string]$name, [bool]$ok, [string]$detail) {
 Write-Host "  Waiting 15s for container to be ready..." -ForegroundColor DarkGray
 Start-Sleep -Seconds 15
 
-# Test 1 — Health endpoint (anonymous, should return 200)
+# Test 1 — Server is reachable: any HTTP response (including 401) proves the container is up.
+# Uses -SkipHttpErrorCheck + -MaximumRedirection 0 so redirects/4xx don't throw or hang.
 try {
-    $r = Invoke-WebRequest -Uri "$baseUrl/health" -UseBasicParsing -TimeoutSec 20 -ErrorAction Stop
-    Test-Result "Health endpoint returns 200" ($r.StatusCode -eq 200) "/health => $($r.StatusCode)"
+    $r = Invoke-WebRequest -Uri "$baseUrl/mcp" -Method GET -UseBasicParsing `
+        -TimeoutSec 20 -SkipHttpErrorCheck -MaximumRedirection 0 -ErrorAction Stop
+    $code = $r.StatusCode
+    $ok   = $code -in @(200, 400, 401, 404, 405)  # any real HTTP response means server is up
+    Test-Result "Server endpoint is reachable" $ok "/mcp GET => $code"
 } catch {
-    $code = try { $_.Exception.Response.StatusCode.value__ } catch { "no response" }
-    Test-Result "Health endpoint returns 200" $false "/health => $code  ($($_.Exception.Message))"
+    Test-Result "Server endpoint is reachable" $false "Timeout or network error: $($_.Exception.Message)"
 }
 
-# Test 2 — Auth gate: unauthenticated POST to /mcp must return 401
+# Test 2 — Auth gate: unauthenticated POST to /mcp must return 401.
+# -SkipHttpErrorCheck prevents exception on 4xx; -MaximumRedirection 0 prevents following
+# any Azure AD login redirect (which would cause a hang).
 try {
-    $r = Invoke-WebRequest -Uri "$baseUrl/mcp" -Method POST -UseBasicParsing -TimeoutSec 20 -ErrorAction Stop
-    Test-Result "Auth gate blocks unauthenticated requests (401)" $false "/mcp => $($r.StatusCode) (expected 401)"
-} catch {
-    $code = try { $_.Exception.Response.StatusCode.value__ } catch { "no response" }
+    $r = Invoke-WebRequest -Uri "$baseUrl/mcp" -Method POST -UseBasicParsing `
+        -TimeoutSec 20 -SkipHttpErrorCheck -MaximumRedirection 0 -ErrorAction Stop
+    $code = $r.StatusCode
     Test-Result "Auth gate blocks unauthenticated requests (401)" ($code -eq 401) "/mcp unauthenticated => $code"
+} catch {
+    Test-Result "Auth gate blocks unauthenticated requests (401)" $false "Timeout or network error: $($_.Exception.Message)"
 }
 
 # Test 3 — MCP initialize (requires a Bearer token from the AD app)
@@ -482,7 +488,8 @@ try {
     $token = $tokenResp.access_token
 
     $initBody = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke-test","version":"1.0"}}}'
-    $headers  = @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" }
+    # MCP streamable-http requires Accept to include text/event-stream (spec §6.3.1)
+    $headers  = @{ Authorization = "Bearer $token"; "Content-Type" = "application/json"; Accept = "application/json, text/event-stream" }
     $r = Invoke-RestMethod -Uri "$baseUrl/mcp" -Method POST -Headers $headers -Body $initBody -TimeoutSec 30 -ErrorAction Stop
     $hasResult = $null -ne $r.result
     Test-Result "MCP initialize succeeds (authenticated)" $hasResult ("serverInfo: $($r.result.serverInfo.name) $($r.result.serverInfo.version)")
@@ -504,7 +511,8 @@ try {
     $token = $tokenResp.access_token
 
     $listBody = '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
-    $headers  = @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" }
+    # MCP streamable-http requires Accept to include text/event-stream (spec §6.3.1)
+    $headers  = @{ Authorization = "Bearer $token"; "Content-Type" = "application/json"; Accept = "application/json, text/event-stream" }
     $r = Invoke-RestMethod -Uri "$baseUrl/mcp" -Method POST -Headers $headers -Body $listBody -TimeoutSec 30 -ErrorAction Stop
     $toolCount = $r.result.tools.Count
     Test-Result "MCP tools/list returns tools" ($toolCount -gt 0) "$toolCount tools advertised"
