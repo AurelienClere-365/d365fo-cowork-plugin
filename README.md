@@ -559,7 +559,7 @@ Client ID     : xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 Client Secret : <secret value>   ← copy immediately, shown once
 Tenant ID     : xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 MCP Server URL: https://d365fo-mcp.kindsky-xxx.westeurope.azurecontainerapps.io/mcp
-Scope         : api://d365fo-mcp-server/.default
+Scope         : api://xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/.default
 ```
 
 Store the client secret in Azure Key Vault immediately after copying — it is never
@@ -583,6 +583,7 @@ written to any file in this repo.
 | Authorization endpoint | `https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/authorize` |
 | Token endpoint | `https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token` |
 | Refresh endpoint | `https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token` |
+| Scope | `api://<clientId>/.default` (exact value printed by the script) |
 
    Replace `{tenantId}` with the Tenant ID from deploy-azure.ps1 output.
 
@@ -671,20 +672,20 @@ you registered in M365 Copilot admin, and attach it to every call to the MCP ser
 }
 ```
 
-### Registering the OAuth credential in M365 Copilot Admin
+### Registering the OAuth credential in Teams Developer Portal
 
 See **Step 6b** above for the full procedure. `deploy-azure.ps1` prints all the values
 you need. Quick reference:
 
-1. Go to [admin.microsoft.com](https://admin.microsoft.com) → **Settings** → **Copilot** → **Plugin management**
-2. Click **Add OAuth credential** and enter the values printed by `deploy-azure.ps1`:
+1. Go to [dev.teams.microsoft.com](https://dev.teams.microsoft.com) → **Tools** → **OAuth client registration** → **Register**
+2. Fill in the values printed by `deploy-azure.ps1`:
 
 | Field | Value (from deploy-azure.ps1 output) |
 |---|---|
 | Client ID | printed as `Client ID` |
 | Client secret | printed as `Client Secret` (store in Key Vault after) |
-| Token URL | `https://login.microsoftonline.com/<tenantId>/oauth2/v2.0/token` |
-| Scope | `api://<appName>-server/.default` |
+| Token endpoint | `https://login.microsoftonline.com/<tenantId>/oauth2/v2.0/token` |
+| Scope | `api://<clientId>/.default` (printed as `Scope`) |
 
 3. Save — copy the **Vault reference ID** shown.
 4. Paste the vault ID into `manifest.json` at `authorization.referenceId`.
