@@ -477,8 +477,21 @@ This validates all skills (rules P001-P008) and creates `d365fo-cowork-plugin.zi
 4. The plugin appears automatically in users' Sources & Skills panel
 
 **Updating an existing deployment:**
-1. Go to **Agents** → **All agents** → find **D365FO Cowork**
-2. Click **Update** → upload the new ZIP
+
+> **Important — avoid the skill count error:** If D365FO Cowork was previously installed
+> via the Cowork UI (Browse plugins), it exists as a personal sideload and will **not**
+> appear in All agents. Trying to "Add agent" again creates a second copy and triggers
+> *"Total agent skills count exceeds the maximum allowed (20)"*.
+>
+> **Correct update flow:**
+> 1. Open **Microsoft Teams** → left sidebar **Apps** → **Manage your apps**
+> 2. Find **D365FO Cowork** → `...` → **Remove** (removes the personal sideload)
+> 3. Go to [admin.microsoft.com](https://admin.microsoft.com) → **Agents** → **All agents**
+> 4. Click `...` → **Add agent** → upload the new ZIP
+> 5. Open the agent → **Deploy to** → **Entire organisation** (or specific groups)
+
+If D365FO Cowork already appears in All agents as an org-managed app:
+1. Find **D365FO Cowork** → `...` → **Update** → upload the new ZIP
 
 ### Step 6: Configure OAuthPluginVault (required for MCP tools to work)
 
@@ -501,29 +514,35 @@ Scope         : api://d365fo-mcp-server/.default
 Store the client secret in Azure Key Vault immediately after copying — it is never
 written to any file in this repo.
 
-#### 6b — Register the OAuth credential in M365 Admin Center
+#### 6b — Register in Teams Developer Portal
 
-Must be done by a **Global Admin or Copilot Admin**.
-
-1. Go to [admin.microsoft.com](https://admin.microsoft.com) → **Settings** → **Copilot**
-   → **Plugin management**
-2. Click **Add OAuth credential** and fill in:
+1. Go to [dev.teams.microsoft.com](https://dev.teams.microsoft.com) → **Tools** →
+   **OAuth client registration** → **Register**
+2. Fill in the form:
 
 | Field | Value |
 |---|---|
+| Registration name | `D365FO Cowork` |
+| Base URL | MCP Server URL from deploy-azure.ps1 output (e.g. `https://d365fo-mcp.xxx.azurecontainerapps.io`) |
+| Restrict usage by organization | **My organization only** |
+| Restrict usage by Teams app | **Existing Teams app** |
+| Teams app ID | your manifest `id` value |
 | Client ID | from deploy-azure.ps1 output |
 | Client secret | from deploy-azure.ps1 output |
-| Token URL | `https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token` |
-| Scope | `api://d365fo-mcp-server/.default` (or as printed by the script) |
+| Authorization endpoint | `https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/authorize` |
+| Token endpoint | `https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token` |
+| Refresh endpoint | `https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token` |
 
-3. Save — copy the **Vault reference ID** shown.
+   Replace `{tenantId}` with the Tenant ID from deploy-azure.ps1 output.
+
+3. Click **Save** — copy the **OAuth registration ID** shown. That is your `referenceId`.
 
 #### 6c — Update manifest.json and redeploy
 
 ```json
 "authorization": {
   "type": "OAuthPluginVault",
-  "referenceId": "YOUR_VAULT_REFERENCE_ID"  // paste from step 6b
+  "referenceId": "YOUR_OAUTH_REGISTRATION_ID"  // OAuth registration ID from step 6b
 }
 ```
 
@@ -533,8 +552,8 @@ Also replace `mcpServerUrl` with the real URL from deploy-azure.ps1:
 "mcpServerUrl": "https://d365fo-mcp.kindsky-xxx.westeurope.azurecontainerapps.io/mcp"
 ```
 
-Then bump `"version"` in `manifest.json`, run `.\.package.ps1`, and update the plugin
-(**Agents → All agents → D365FO Cowork → Update**).
+Then bump `"version"` in `manifest.json`, run `.\package.ps1`, and update the plugin
+following the flow in **Step 5 — Updating an existing deployment** above.
 
 After updating, Cowork will prompt each user to consent once; tokens are then stored and
 re-injected automatically on every call to the Container App.
