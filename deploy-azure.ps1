@@ -94,6 +94,17 @@ $AcrName = $AcrName.ToLower() -replace '[^a-z0-9]', ''
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
+# Resolve az — may not be in PATH even when installed (e.g. new terminal sessions on Windows)
+$azCmd = (Get-Command "az" -ErrorAction SilentlyContinue)?.Source
+if (-not $azCmd) {
+    $azCmd = "C:\Program Files\Microsoft SDKs\Azure\CLI2\wbin\az.cmd"
+    if (-not (Test-Path $azCmd)) { $azCmd = $null }
+}
+if ($azCmd) {
+    # Wrap in a function so the rest of the script can call `az` normally
+    function az { & $azCmd @args }
+}
+
 # ---------------------------------------------------------------------------
 # Cleanup mode — delete all resources for a clean retry
 # ---------------------------------------------------------------------------
@@ -120,7 +131,7 @@ if ($Cleanup) {
 # TestOnly mode — skip deployment, run smoke tests against live app
 # ---------------------------------------------------------------------------
 if ($TestOnly) {
-    if (-not (Get-Command "az" -ErrorAction SilentlyContinue)) {
+    if (-not $azCmd) {
         Write-Error "Azure CLI (az) not found. Install from https://aka.ms/installazurecli"
         exit 1
     }
@@ -167,7 +178,7 @@ Copy it first:
     exit 1
 }
 
-if (-not (Get-Command "az" -ErrorAction SilentlyContinue)) {
+if (-not $azCmd) {
     Write-Error "Azure CLI (az) not found. Install from https://aka.ms/installazurecli"
     exit 1
 }
