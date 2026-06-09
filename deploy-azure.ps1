@@ -160,9 +160,11 @@ if ($TestOnly) {
 # ---------------------------------------------------------------------------
 # Preflight checks
 # ---------------------------------------------------------------------------
-Write-Host ""
-Write-Host "D365FO Cowork Plugin - Azure Deployment" -ForegroundColor Cyan
-Write-Host ""
+if (-not $TestOnly) {
+    Write-Host ""
+    Write-Host "D365FO Cowork Plugin - Azure Deployment" -ForegroundColor Cyan
+    Write-Host ""
+}
 
 if (-not $TestOnly -and -not (Test-Path (Join-Path $scriptDir "d365fo-index.sqlite"))) {
     Write-Error (@"
@@ -184,9 +186,11 @@ if (-not $account) {
     Write-Error "Not logged in to Azure CLI. Run: az login"
     exit 1
 }
-Write-Host ("  Subscription : {0} ({1})" -f $account.name, $account.id)
-Write-Host ("  Tenant       : {0}" -f $account.tenantId)
-Write-Host ""
+if (-not $TestOnly) {
+    Write-Host ("  Subscription : {0} ({1})" -f $account.name, $account.id)
+    Write-Host ("  Tenant       : {0}" -f $account.tenantId)
+    Write-Host ""
+}
 
 $tenantId = $account.tenantId
 
@@ -450,7 +454,7 @@ try {
     $r = Invoke-WebRequest -Uri "$baseUrl/health" -UseBasicParsing -TimeoutSec 20 -ErrorAction Stop
     Test-Result "Health endpoint returns 200" ($r.StatusCode -eq 200) "/health => $($r.StatusCode)"
 } catch {
-    $code = if ($_.Exception.Response) { $_.Exception.Response.StatusCode.value__ } else { "no response" }
+    $code = try { $_.Exception.Response.StatusCode.value__ } catch { "no response" }
     Test-Result "Health endpoint returns 200" $false "/health => $code  ($($_.Exception.Message))"
 }
 
@@ -459,7 +463,7 @@ try {
     $r = Invoke-WebRequest -Uri "$baseUrl/mcp" -Method POST -UseBasicParsing -TimeoutSec 20 -ErrorAction Stop
     Test-Result "Auth gate blocks unauthenticated requests (401)" $false "/mcp => $($r.StatusCode) (expected 401)"
 } catch {
-    $code = if ($_.Exception.Response) { $_.Exception.Response.StatusCode.value__ } else { "no response" }
+    $code = try { $_.Exception.Response.StatusCode.value__ } catch { "no response" }
     Test-Result "Auth gate blocks unauthenticated requests (401)" ($code -eq 401) "/mcp unauthenticated => $code"
 }
 
