@@ -81,9 +81,13 @@ if ($Cleanup) {
     Write-Host "  Deleting Container App '$AppName'..." -ForegroundColor White
     az containerapp delete --name $AppName --resource-group $ResourceGroup --yes 2>$null
     Write-Host "  Deleting Container Apps Environment '$EnvironmentName'..." -ForegroundColor White
-    az containerapp env delete --name $EnvironmentName --resource-group $ResourceGroup --yes 2>$null
+    az containerapp env delete --name $EnvironmentName --resource-group $ResourceGroup --yes --no-wait 2>$null
     Write-Host "  Deleting ACR '$AcrName'..." -ForegroundColor White
     az acr delete --name $AcrName --resource-group $ResourceGroup --yes 2>$null
+    Write-Host ""
+    Write-Host "  NOTE: ACR deletion propagates globally and may take 2-3 minutes." -ForegroundColor Yellow
+    Write-Host "        Wait before redeploying to avoid 'name still reserved' errors." -ForegroundColor Yellow
+    Write-Host ""
     Write-Host "  All resources deleted. Re-run without -Cleanup to redeploy." -ForegroundColor Green
     exit 0
 }
@@ -132,13 +136,38 @@ Write-Host "      Done." -ForegroundColor DarkGray
 # Step 2 — Build and push image via ACR Tasks
 # ---------------------------------------------------------------------------
 Write-Host "[2/7] Creating ACR '$AcrName' (if needed) and building image..." -ForegroundColor White
-az acr create --resource-group $ResourceGroup --name $AcrName --sku Basic --output none 2>$null
+
+# Check if ACR already exists (globally unique name — may survive across region switches)
+$acrExists = az acr show --name $AcrName --query "name" -o tsv 2>$null
+if (-not $acrExists) {
+    Write-Host "      Creating ACR..." -ForegroundColor DarkGray
+    $createOut = az acr create --resource-group $ResourceGroup --name $AcrName --sku Basic --output json 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "" 
+        Write-Host "ERROR: ACR creation failed. Output:" -ForegroundColor Red
+        Write-Host $createOut -ForegroundColor Red
+        Write-Host ""
+        Write-Host "Possible causes:" -ForegroundColor Yellow
+        Write-Host "  - Name '$AcrName' is taken globally. Try a unique name, e.g. 'acrd365fo$($account.id.Substring(0,6))'." -ForegroundColor Yellow
+        Write-Host "  - Previous cleanup did not complete. Wait a few minutes and retry." -ForegroundColor Yellow
+        exit 1
+    }
+} else {
+    Write-Host "      ACR already exists, reusing." -ForegroundColor DarkGray
+}
+
 # Enable admin credentials so Container Apps can pull the image
 az acr update --name $AcrName --admin-enabled true --output none
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Failed to enable ACR admin credentials on '$AcrName'."
+    exit 1
+}
+
 # ACR Tasks builds the image remotely — no local Docker required
 Push-Location $scriptDir
 try {
-    az acr build --registry $AcrName --image "d365fo-mcp:latest" . --output none
+    az acr build --registry $AcrName --image "d365fo-mcp:latest" .
+    if ($LASTEXITCODE -ne 0) { throw "ACR build failed." }
 } finally {
     Pop-Location
 }
