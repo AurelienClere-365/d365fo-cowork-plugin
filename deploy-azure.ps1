@@ -283,11 +283,11 @@ az containerapp auth update `
     --output none
 
 # Wire the app registration as the identity provider
+# Note: --issuer already encodes the tenant; --tenant-id is mutually exclusive with --issuer
 az containerapp auth microsoft update `
     --name $AppName `
     --resource-group $ResourceGroup `
     --client-id $clientId `
-    --tenant-id $tenantId `
     --issuer "https://login.microsoftonline.com/$tenantId/v2.0" `
     --allowed-audiences "api://$appRegName" `
     --output none
@@ -382,7 +382,7 @@ try {
     $r = Invoke-WebRequest -Uri "$baseUrl/health" -UseBasicParsing -TimeoutSec 20 -ErrorAction Stop
     Test-Result "Health endpoint returns 200" ($r.StatusCode -eq 200) "/health => $($r.StatusCode)"
 } catch {
-    $code = $_.Exception.Response.StatusCode.value__
+    $code = if ($_.Exception.Response) { $_.Exception.Response.StatusCode.value__ } else { "no response" }
     Test-Result "Health endpoint returns 200" $false "/health => $code  ($($_.Exception.Message))"
 }
 
@@ -391,7 +391,7 @@ try {
     $r = Invoke-WebRequest -Uri "$baseUrl/mcp" -Method POST -UseBasicParsing -TimeoutSec 20 -ErrorAction Stop
     Test-Result "Auth gate blocks unauthenticated requests (401)" $false "/mcp => $($r.StatusCode) (expected 401)"
 } catch {
-    $code = $_.Exception.Response.StatusCode.value__
+    $code = if ($_.Exception.Response) { $_.Exception.Response.StatusCode.value__ } else { "no response" }
     Test-Result "Auth gate blocks unauthenticated requests (401)" ($code -eq 401) "/mcp unauthenticated => $code"
 }
 
