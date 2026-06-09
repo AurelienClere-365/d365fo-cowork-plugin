@@ -302,6 +302,10 @@ Write-Host "[5/7] Deploying Container App '$AppName'..." -ForegroundColor White
 $loginServer = az acr show --name $AcrName --query loginServer -o tsv
 $acrPassword = az acr credential show --name $AcrName --query "passwords[0].value" -o tsv
 
+# Unique revision suffix forces Container Apps to pull the new image even when the tag
+# name (latest) hasn't changed — without this, update is a no-op on a same-tag deploy.
+$revSuffix = (Get-Date -Format "yyyyMMdd-HHmmss")
+
 # Check if app already exists — update image if so, create otherwise
 $appExists = az containerapp show `
     --name $AppName `
@@ -309,11 +313,12 @@ $appExists = az containerapp show `
     --query "name" -o tsv 2>$null
 
 if ($appExists) {
-    Write-Host "      App exists, updating image..." -ForegroundColor DarkGray
+    Write-Host "      App exists, updating image (revision: $revSuffix)..." -ForegroundColor DarkGray
     az containerapp update `
         --name $AppName `
         --resource-group $ResourceGroup `
         --image "$loginServer/d365fo-mcp:latest" `
+        --revision-suffix $revSuffix `
         --output none
 } else {
     az containerapp create `
@@ -324,6 +329,7 @@ if ($appExists) {
         --registry-server $loginServer `
         --registry-username $AcrName `
         --registry-password $acrPassword `
+        --revision-suffix $revSuffix `
         --target-port 8080 `
         --ingress external `
         --min-replicas 1 `
