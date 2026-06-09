@@ -33,20 +33,43 @@
     Container Apps Environment, resource group) so you can do a clean retry.
     The Azure AD app registration is NOT deleted (it survives redeployments).
 
+.PARAMETER TestOnly
+    Skip all deployment steps and run only the smoke tests against the live app.
+    Requires -AppName and -ResourceGroup to look up the endpoint, plus -ClientId and
+    -ClientSecret to obtain a Bearer token for the authenticated tests.
+
+.PARAMETER ClientId
+    Azure AD app client ID. Required when using -TestOnly.
+
+.PARAMETER ClientSecret
+    Azure AD app client secret. Required when using -TestOnly.
+
 .EXAMPLE
     # Full deploy
     .\.deploy-azure.ps1 `
         -ResourceGroup  "rg-d365fo-tools" `
-        -Location       "westeurope" `
+        -Location       "northeurope" `
         -AcrName        "acrd365fotools" `
         -AppName        "d365fo-mcp" `
         -EnvironmentName "cae-d365fo-tools"
 
 .EXAMPLE
+    # Re-run smoke tests only (no redeploy)
+    .\.deploy-azure.ps1 `
+        -ResourceGroup "rg-d365fo-tools" `
+        -Location      "northeurope" `
+        -AcrName       "acrd365fotools" `
+        -AppName       "d365fo-mcp" `
+        -EnvironmentName "cae-d365fo-tools" `
+        -TestOnly `
+        -ClientId     "0db03044-7076-425c-aac8-54a755770be6" `
+        -ClientSecret "<your-secret>"
+
+.EXAMPLE
     # Clean up everything and start fresh
     .\.deploy-azure.ps1 `
         -ResourceGroup  "rg-d365fo-tools" `
-        -Location       "westeurope" `
+        -Location       "northeurope" `
         -AcrName        "acrd365fotools" `
         -AppName        "d365fo-mcp" `
         -EnvironmentName "cae-d365fo-tools" `
@@ -59,7 +82,10 @@ param(
     [Parameter(Mandatory)][string]$AcrName,
     [Parameter(Mandatory)][string]$AppName,
     [Parameter(Mandatory)][string]$EnvironmentName,
-    [switch]$Cleanup
+    [switch]$Cleanup,
+    [switch]$TestOnly,
+    [string]$ClientId,
+    [string]$ClientSecret
 )
 
 Set-StrictMode -Version Latest
@@ -93,13 +119,52 @@ if ($Cleanup) {
 }
 
 # ---------------------------------------------------------------------------
+# TestOnly mode — skip deployment, run smoke tests against live app
+# ---------------------------------------------------------------------------
+if ($TestOnly) {
+    if (-not $ClientId -or -not $ClientSecret) {
+        Write-Error "-TestOnly requires -ClientId and -ClientSecret. These were printed at the end of your original deployment."
+        exit 1
+    }
+    if (-not (Get-Command "az" -ErrorAction SilentlyContinue)) {
+        Write-Error "Azure CLI (az) not found. Install from https://aka.ms/installazurecli"
+        exit 1
+    }
+    $account = az account show --output json 2>$null | ConvertFrom-Json
+    if (-not $account) { Write-Error "Not logged in. Run: az login"; exit 1 }
+    $tenantId = $account.tenantId
+
+    Write-Host ""
+    Write-Host "TEST-ONLY MODE — running smoke tests against live app" -ForegroundColor Cyan
+    Write-Host ""
+
+    $fqdn = az containerapp show `
+        --name $AppName `
+        --resource-group $ResourceGroup `
+        --query "properties.configuration.ingress.fqdn" -o tsv 2>$null
+    if (-not $fqdn) {
+        Write-Error "Could not find Container App '$AppName' in '$ResourceGroup'. Is it deployed?"
+        exit 1
+    }
+    $baseUrl   = "https://$fqdn"
+    $mcpUrl    = "$baseUrl/mcp"
+    $appRegName = "$AppName-server"
+    $clientId     = $ClientId
+    $clientSecret = $ClientSecret
+    $passed = 0; $failed = 0
+
+    Write-Host "  Endpoint: $mcpUrl" -ForegroundColor DarkGray
+    Write-Host ""
+}
+
+# ---------------------------------------------------------------------------
 # Preflight checks
 # ---------------------------------------------------------------------------
 Write-Host ""
 Write-Host "D365FO Cowork Plugin - Azure Deployment" -ForegroundColor Cyan
 Write-Host ""
 
-if (-not (Test-Path (Join-Path $scriptDir "d365fo-index.sqlite"))) {
+if (-not $TestOnly -and -not (Test-Path (Join-Path $scriptDir "d365fo-index.sqlite"))) {
     Write-Error (@"
 d365fo-index.sqlite not found in the script directory.
 Copy it first:
@@ -125,6 +190,7 @@ Write-Host ""
 
 $tenantId = $account.tenantId
 
+if (-not $TestOnly) {
 # ---------------------------------------------------------------------------
 # Step 1 — Resource group
 # ---------------------------------------------------------------------------
@@ -349,6 +415,8 @@ Write-Host "  SECURITY NOTE: Store the client secret in Azure Key Vault or your"
 Write-Host "  password manager. Do NOT commit it to source control."
 Write-Host ""
 
+} # end if (-not $TestOnly)
+
 # ---------------------------------------------------------------------------
 # Step 8 — Smoke tests
 # ---------------------------------------------------------------------------
@@ -357,7 +425,7 @@ Write-Host " Smoke tests" -ForegroundColor White
 Write-Host "========================================================" -ForegroundColor Cyan
 Write-Host ""
 
-$baseUrl = "https://$fqdn"
+$baseUrl = if ($TestOnly) { "https://$fqdn" } else { "https://$fqdn" }
 $passed  = 0
 $failed  = 0
 
