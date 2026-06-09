@@ -28,13 +28,29 @@
     on the Container App so only callers holding a valid Azure AD token from your
     tenant can reach the MCP endpoint. Anonymous requests receive HTTP 401.
 
+.PARAMETER Cleanup
+    When specified, deletes all Azure resources created by this script (ACR, Container App,
+    Container Apps Environment, resource group) so you can do a clean retry.
+    The Azure AD app registration is NOT deleted (it survives redeployments).
+
 .EXAMPLE
-    .\deploy-azure.ps1 `
+    # Full deploy
+    .\.deploy-azure.ps1 `
         -ResourceGroup  "rg-d365fo-tools" `
         -Location       "westeurope" `
         -AcrName        "acrd365fotools" `
         -AppName        "d365fo-mcp" `
         -EnvironmentName "cae-d365fo-tools"
+
+.EXAMPLE
+    # Clean up everything and start fresh
+    .\.deploy-azure.ps1 `
+        -ResourceGroup  "rg-d365fo-tools" `
+        -Location       "westeurope" `
+        -AcrName        "acrd365fotools" `
+        -AppName        "d365fo-mcp" `
+        -EnvironmentName "cae-d365fo-tools" `
+        -Cleanup
 #>
 [CmdletBinding()]
 param(
@@ -42,7 +58,8 @@ param(
     [Parameter(Mandatory)][string]$Location,
     [Parameter(Mandatory)][string]$AcrName,
     [Parameter(Mandatory)][string]$AppName,
-    [Parameter(Mandatory)][string]$EnvironmentName
+    [Parameter(Mandatory)][string]$EnvironmentName,
+    [switch]$Cleanup
 )
 
 Set-StrictMode -Version Latest
@@ -52,6 +69,24 @@ $ErrorActionPreference = 'Stop'
 $AcrName = $AcrName.ToLower() -replace '[^a-z0-9]', ''
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+# ---------------------------------------------------------------------------
+# Cleanup mode — delete all resources for a clean retry
+# ---------------------------------------------------------------------------
+if ($Cleanup) {
+    Write-Host "" 
+    Write-Host "CLEANUP MODE — deleting Azure resources for a fresh retry" -ForegroundColor Yellow
+    Write-Host "  (Azure AD app registration is preserved)" -ForegroundColor DarkGray
+    Write-Host ""
+    Write-Host "  Deleting Container App '$AppName'..." -ForegroundColor White
+    az containerapp delete --name $AppName --resource-group $ResourceGroup --yes 2>$null
+    Write-Host "  Deleting Container Apps Environment '$EnvironmentName'..." -ForegroundColor White
+    az containerapp env delete --name $EnvironmentName --resource-group $ResourceGroup --yes 2>$null
+    Write-Host "  Deleting ACR '$AcrName'..." -ForegroundColor White
+    az acr delete --name $AcrName --resource-group $ResourceGroup --yes 2>$null
+    Write-Host "  All resources deleted. Re-run without -Cleanup to redeploy." -ForegroundColor Green
+    exit 0
+}
 
 # ---------------------------------------------------------------------------
 # Preflight checks
@@ -98,6 +133,8 @@ Write-Host "      Done." -ForegroundColor DarkGray
 # ---------------------------------------------------------------------------
 Write-Host "[2/7] Creating ACR '$AcrName' (if needed) and building image..." -ForegroundColor White
 az acr create --resource-group $ResourceGroup --name $AcrName --sku Basic --output none 2>$null
+# Enable admin credentials so Container Apps can pull the image
+az acr update --name $AcrName --admin-enabled true --output none
 # ACR Tasks builds the image remotely — no local Docker required
 Push-Location $scriptDir
 try {
