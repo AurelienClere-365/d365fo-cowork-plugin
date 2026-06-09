@@ -12,7 +12,7 @@ RUN apk add --no-cache git \
 # Build the MCP adapter as a self-contained linux-x64 binary
 RUN dotnet publish src/D365FO.Mcp \
       -c Release \
-      -r linux-x64 \
+      -r linux-musl-x64 \
       --self-contained true \
       -p:PublishSingleFile=true \
       -p:PublishTrimmed=false \
