@@ -21,7 +21,7 @@ RUN dotnet publish src/D365FO.Mcp \
 # =============================================================================
 # Stage 2 — runtime: minimal image, no SDK
 # =============================================================================
-FROM mcr.microsoft.com/dotnet/runtime-deps:10.0-alpine AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS runtime
 
 LABEL maintainer="your-org"
 LABEL description="D365FO CLI MCP server for Cowork connector"
