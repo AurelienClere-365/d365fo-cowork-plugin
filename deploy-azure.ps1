@@ -319,3 +319,103 @@ Write-Host ""
 Write-Host "  SECURITY NOTE: Store the client secret in Azure Key Vault or your"
 Write-Host "  password manager. Do NOT commit it to source control."
 Write-Host ""
+
+# ---------------------------------------------------------------------------
+# Step 8 — Smoke tests
+# ---------------------------------------------------------------------------
+Write-Host "========================================================" -ForegroundColor Cyan
+Write-Host " Smoke tests" -ForegroundColor White
+Write-Host "========================================================" -ForegroundColor Cyan
+Write-Host ""
+
+$baseUrl = "https://$fqdn"
+$passed  = 0
+$failed  = 0
+
+function Test-Result([string]$name, [bool]$ok, [string]$detail) {
+    if ($ok) {
+        Write-Host ("  [PASS] {0}" -f $name) -ForegroundColor Green
+        if ($detail) { Write-Host ("         {0}" -f $detail) -ForegroundColor DarkGray }
+        $script:passed++
+    } else {
+        Write-Host ("  [FAIL] {0}" -f $name) -ForegroundColor Red
+        if ($detail) { Write-Host ("         {0}" -f $detail) -ForegroundColor DarkGray }
+        $script:failed++
+    }
+}
+
+# Give the container a moment to be ready after deployment
+Write-Host "  Waiting 15s for container to be ready..." -ForegroundColor DarkGray
+Start-Sleep -Seconds 15
+
+# Test 1 — Health endpoint (anonymous, should return 200)
+try {
+    $r = Invoke-WebRequest -Uri "$baseUrl/health" -UseBasicParsing -TimeoutSec 20 -ErrorAction Stop
+    Test-Result "Health endpoint returns 200" ($r.StatusCode -eq 200) "/health => $($r.StatusCode)"
+} catch {
+    $code = $_.Exception.Response.StatusCode.value__
+    Test-Result "Health endpoint returns 200" $false "/health => $code  ($($_.Exception.Message))"
+}
+
+# Test 2 — Auth gate: unauthenticated POST to /mcp must return 401
+try {
+    $r = Invoke-WebRequest -Uri "$baseUrl/mcp" -Method POST -UseBasicParsing -TimeoutSec 20 -ErrorAction Stop
+    Test-Result "Auth gate blocks unauthenticated requests (401)" $false "/mcp => $($r.StatusCode) (expected 401)"
+} catch {
+    $code = $_.Exception.Response.StatusCode.value__
+    Test-Result "Auth gate blocks unauthenticated requests (401)" ($code -eq 401) "/mcp unauthenticated => $code"
+}
+
+# Test 3 — MCP initialize (requires a Bearer token from the AD app)
+#   Obtain a client-credentials token using the freshly created client secret
+try {
+    $tokenBody = @{
+        grant_type    = "client_credentials"
+        client_id     = $clientId
+        client_secret = $clientSecret
+        scope         = "api://$appRegName/.default"
+    }
+    $tokenResp = Invoke-RestMethod `
+        -Uri "https://login.microsoftonline.com/$tenantId/oauth2/v2.0/token" `
+        -Method POST -Body $tokenBody -TimeoutSec 20 -ErrorAction Stop
+    $token = $tokenResp.access_token
+
+    $initBody = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke-test","version":"1.0"}}}'
+    $headers  = @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" }
+    $r = Invoke-RestMethod -Uri "$baseUrl/mcp" -Method POST -Headers $headers -Body $initBody -TimeoutSec 30 -ErrorAction Stop
+    $hasResult = $null -ne $r.result
+    Test-Result "MCP initialize succeeds (authenticated)" $hasResult ("serverInfo: $($r.result.serverInfo.name) $($r.result.serverInfo.version)")
+} catch {
+    Test-Result "MCP initialize succeeds (authenticated)" $false $_.Exception.Message
+}
+
+# Test 4 — MCP tools/list: server must advertise at least one tool
+try {
+    $tokenBody = @{
+        grant_type    = "client_credentials"
+        client_id     = $clientId
+        client_secret = $clientSecret
+        scope         = "api://$appRegName/.default"
+    }
+    $tokenResp = Invoke-RestMethod `
+        -Uri "https://login.microsoftonline.com/$tenantId/oauth2/v2.0/token" `
+        -Method POST -Body $tokenBody -TimeoutSec 20 -ErrorAction Stop
+    $token = $tokenResp.access_token
+
+    $listBody = '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
+    $headers  = @{ Authorization = "Bearer $token"; "Content-Type" = "application/json" }
+    $r = Invoke-RestMethod -Uri "$baseUrl/mcp" -Method POST -Headers $headers -Body $listBody -TimeoutSec 30 -ErrorAction Stop
+    $toolCount = $r.result.tools.Count
+    Test-Result "MCP tools/list returns tools" ($toolCount -gt 0) "$toolCount tools advertised"
+} catch {
+    Test-Result "MCP tools/list returns tools" $false $_.Exception.Message
+}
+
+Write-Host ""
+Write-Host ("  Results: {0} passed, {1} failed" -f $passed, $failed) -ForegroundColor $(if ($failed -eq 0) { "Green" } else { "Yellow" })
+Write-Host ""
+if ($failed -gt 0) {
+    Write-Host "  Some tests failed. Check Container App logs:" -ForegroundColor Yellow
+    Write-Host "    az containerapp logs show --name $AppName --resource-group $ResourceGroup --follow" -ForegroundColor DarkGray
+    Write-Host ""
+}
