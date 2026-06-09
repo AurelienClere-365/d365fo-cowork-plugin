@@ -32,7 +32,7 @@
     .\deploy-azure.ps1 `
         -ResourceGroup  "rg-d365fo-tools" `
         -Location       "westeurope" `
-        -AcrName        "acrD365FoTools" `
+        -AcrName        "acrd365fotools" `
         -AppName        "d365fo-mcp" `
         -EnvironmentName "cae-d365fo-tools"
 #>
@@ -47,6 +47,9 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# ACR names must be lowercase alphanumeric (Azure requirement)
+$AcrName = $AcrName.ToLower() -replace '[^a-z0-9]', ''
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
@@ -140,6 +143,9 @@ if ($existingApp) {
 $secretJson   = az ad app credential reset --id $clientId --years 2 --output json | ConvertFrom-Json
 $clientSecret = $secretJson.password
 Write-Host "      Client secret generated (valid 2 years)." -ForegroundColor DarkGray
+# Ensure OperationalInsights provider is registered (required for Container Apps Environment)
+az provider register --namespace Microsoft.OperationalInsights --wait --output none 2>$null
+
 Write-Host "[4/7] Ensuring Container Apps Environment '$EnvironmentName'..." -ForegroundColor White
 $envExists = az containerapp env show `
     --name $EnvironmentName `
