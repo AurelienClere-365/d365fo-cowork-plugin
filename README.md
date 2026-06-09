@@ -74,6 +74,7 @@ d365fo-cowork-plugin/
 | d365fo-cli built | Not needed | Required | Required (index baked into image) |
 | D365FO index built | Not needed | Required | Required |
 | Azure subscription | Not needed | Not needed | Required |
+| Azure CLI (`az`) | Not needed | Not needed | Required |
 | M365 Global / Copilot Admin | Not needed | Not needed | Required (one-time) |
 | Frontier preview program | Not needed | Not needed | Required |
 
@@ -409,6 +410,12 @@ Copy-Item "$env:LOCALAPPDATA\d365fo-cli\d365fo-index.sqlite" .\d365fo-index.sqli
 ```
 
 ### Step 2: Deploy to Azure
+
+> **Prerequisite:** [Azure CLI](https://aka.ms/installazurecli) must be installed and you must be logged in:
+> ```powershell
+> winget install Microsoft.AzureCLI   # or download from https://aka.ms/installazurecli
+> az login
+> ```
 
 > **Region tip:** `westeurope` is sometimes at AKS capacity. If step 4 fails with
 > `AKSCapacityHeavyUsage`, retry with `-Location northeurope` or `-Location francecentral`.
