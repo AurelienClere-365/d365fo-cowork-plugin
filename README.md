@@ -426,10 +426,10 @@ The script runs 7 deployment steps then automatically executes **4 smoke tests**
 
 | Test | What is validated |
 |---|---|
-| Health endpoint | `GET /health` returns 200 — container is up |
-| Auth gate | Unauthenticated `POST /mcp` returns 401 — Easy Auth is working |
-| MCP initialize | Authenticated `initialize` call succeeds — MCP server is functional |
-| MCP tools/list | At least one tool advertised — D365FO index loaded correctly |
+| Server reachable | `POST /mcp` (5 s probe) responds or holds SSE stream — container is up |
+| Easy Auth gate | Unauthenticated `POST /mcp` returns 401 — Easy Auth is working |
+| Container App state | `az containerapp show` provisioningState = Succeeded |
+| Revision running | `az containerapp revision list` latest revision is Running |
 
 At the end the script prints:
 ```
@@ -467,13 +467,8 @@ or updating OAuth registration.
 .\deploy-azure.ps1 `
   -ResourceGroup "rg-d365fo-tools" -Location "northeurope" `
   -AcrName "acrd365fotools" -AppName "d365fo-mcp" -EnvironmentName "cae-d365fo-tools" `
-  -TestOnly `
-  -ClientId     "<Application (client) ID>" `
-  -ClientSecret "<client secret from deployment output>"
+  -TestOnly
 ```
-
-The `-ClientId` and `-ClientSecret` values are printed at the end of every full
-deployment run under **SECURE endpoint**.
 
 ### Step 3: Update manifest.json
 

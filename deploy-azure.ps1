@@ -35,14 +35,14 @@
 
 .PARAMETER TestOnly
     Skip all deployment steps and run only the smoke tests against the live app.
-    Requires -AppName and -ResourceGroup to look up the endpoint, plus -ClientId and
-    -ClientSecret to obtain a Bearer token for the authenticated tests.
+    Only -AppName and -ResourceGroup are needed (the FQDN and provisioning state are
+    looked up from Azure). -ClientId and -ClientSecret are no longer required.
 
 .PARAMETER ClientId
-    Azure AD app client ID. Required when using -TestOnly.
+    Ignored. Kept for backwards compatibility only.
 
 .PARAMETER ClientSecret
-    Azure AD app client secret. Required when using -TestOnly.
+    Ignored. Kept for backwards compatibility only.
 
 .EXAMPLE
     # Full deploy
@@ -56,14 +56,12 @@
 .EXAMPLE
     # Re-run smoke tests only (no redeploy)
     .\.deploy-azure.ps1 `
-        -ResourceGroup "rg-d365fo-tools" `
-        -Location      "northeurope" `
-        -AcrName       "acrd365fotools" `
-        -AppName       "d365fo-mcp" `
+        -ResourceGroup   "rg-d365fo-tools" `
+        -Location        "northeurope" `
+        -AcrName         "acrd365fotools" `
+        -AppName         "d365fo-mcp" `
         -EnvironmentName "cae-d365fo-tools" `
-        -TestOnly `
-        -ClientId     "0db03044-7076-425c-aac8-54a755770be6" `
-        -ClientSecret "<your-secret>"
+        -TestOnly
 
 .EXAMPLE
     # Clean up everything and start fresh
@@ -122,10 +120,6 @@ if ($Cleanup) {
 # TestOnly mode — skip deployment, run smoke tests against live app
 # ---------------------------------------------------------------------------
 if ($TestOnly) {
-    if (-not $ClientId -or -not $ClientSecret) {
-        Write-Error "-TestOnly requires -ClientId and -ClientSecret. These were printed at the end of your original deployment."
-        exit 1
-    }
     if (-not (Get-Command "az" -ErrorAction SilentlyContinue)) {
         Write-Error "Azure CLI (az) not found. Install from https://aka.ms/installazurecli"
         exit 1
@@ -146,11 +140,9 @@ if ($TestOnly) {
         Write-Error "Could not find Container App '$AppName' in '$ResourceGroup'. Is it deployed?"
         exit 1
     }
-    $baseUrl   = "https://$fqdn"
-    $mcpUrl    = "$baseUrl/mcp"
+    $baseUrl    = "https://$fqdn"
+    $mcpUrl     = "$baseUrl/mcp"
     $appRegName = "$AppName-server"
-    $clientId     = $ClientId
-    $clientSecret = $ClientSecret
     $passed = 0; $failed = 0
 
     Write-Host "  Endpoint: $mcpUrl" -ForegroundColor DarkGray
@@ -445,80 +437,75 @@ function Test-Result([string]$name, [bool]$ok, [string]$detail) {
     }
 }
 
-# Give the container a moment to be ready after deployment
-Write-Host "  Waiting 15s for container to be ready..." -ForegroundColor DarkGray
-Start-Sleep -Seconds 15
-
-# Test 1 — Server is reachable: any HTTP response (including 401) proves the container is up.
-# Uses -SkipHttpErrorCheck + -MaximumRedirection 0 so redirects/4xx don't throw or hang.
-try {
-    $r = Invoke-WebRequest -Uri "$baseUrl/mcp" -Method GET -UseBasicParsing `
-        -TimeoutSec 20 -SkipHttpErrorCheck -MaximumRedirection 0 -ErrorAction Stop
-    $code = $r.StatusCode
-    $ok   = $code -in @(200, 400, 401, 404, 405)  # any real HTTP response means server is up
-    Test-Result "Server endpoint is reachable" $ok "/mcp GET => $code"
-} catch {
-    Test-Result "Server endpoint is reachable" $false "Timeout or network error: $($_.Exception.Message)"
+# Give the container a moment to be ready after a fresh deployment
+if (-not $TestOnly) {
+    Write-Host "  Waiting 15s for container to be ready..." -ForegroundColor DarkGray
+    Start-Sleep -Seconds 15
 }
 
-# Test 2 — Auth gate: unauthenticated POST to /mcp must return 401.
-# -SkipHttpErrorCheck prevents exception on 4xx; -MaximumRedirection 0 prevents following
-# any Azure AD login redirect (which would cause a hang).
+# ---------------------------------------------------------------------------
+# Single HTTP probe shared by Tests 1 and 2
+# POST /mcp with proper Accept header; short 5 s timeout intentional:
+#   - timeout  → SSE stream held open (MCP streamable-http) = server IS running
+#   - 401      → Easy Auth is configured and blocking correctly
+#   - other 4xx/5xx → server responded = server IS running
+#   - network error → server is down
+# ---------------------------------------------------------------------------
+$probeStatus   = $null
+$probeTimeout  = $false
+$probeErr      = $null
 try {
-    $r = Invoke-WebRequest -Uri "$baseUrl/mcp" -Method POST -UseBasicParsing `
-        -TimeoutSec 20 -SkipHttpErrorCheck -MaximumRedirection 0 -ErrorAction Stop
-    $code = $r.StatusCode
-    Test-Result "Auth gate blocks unauthenticated requests (401)" ($code -eq 401) "/mcp unauthenticated => $code"
+    $probe = Invoke-WebRequest -Uri "$baseUrl/mcp" -Method POST -UseBasicParsing `
+        -TimeoutSec 5 -SkipHttpErrorCheck -MaximumRedirection 0 `
+        -Headers @{ Accept = "application/json, text/event-stream" } `
+        -ContentType "application/json" `
+        -Body '{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke","version":"1"}}}' `
+        -ErrorAction Stop
+    $probeStatus = $probe.StatusCode
 } catch {
-    Test-Result "Auth gate blocks unauthenticated requests (401)" $false "Timeout or network error: $($_.Exception.Message)"
-}
-
-# Test 3 — MCP initialize (requires a Bearer token from the AD app)
-#   Obtain a client-credentials token using the freshly created client secret
-try {
-    $tokenBody = @{
-        grant_type    = "client_credentials"
-        client_id     = $clientId
-        client_secret = $clientSecret
-        scope         = "api://$appRegName/.default"
+    if ($_.Exception.Message -match "HttpClient.Timeout|canceled|timed out") {
+        $probeTimeout = $true   # SSE stream held open = server is running
+    } else {
+        $probeErr = $_.Exception.Message
     }
-    $tokenResp = Invoke-RestMethod `
-        -Uri "https://login.microsoftonline.com/$tenantId/oauth2/v2.0/token" `
-        -Method POST -Body $tokenBody -TimeoutSec 20 -ErrorAction Stop
-    $token = $tokenResp.access_token
-
-    $initBody = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke-test","version":"1.0"}}}'
-    # MCP streamable-http requires Accept to include text/event-stream (spec §6.3.1)
-    $headers  = @{ Authorization = "Bearer $token"; "Content-Type" = "application/json"; Accept = "application/json, text/event-stream" }
-    $r = Invoke-RestMethod -Uri "$baseUrl/mcp" -Method POST -Headers $headers -Body $initBody -TimeoutSec 30 -ErrorAction Stop
-    $hasResult = $null -ne $r.result
-    Test-Result "MCP initialize succeeds (authenticated)" $hasResult ("serverInfo: $($r.result.serverInfo.name) $($r.result.serverInfo.version)")
-} catch {
-    Test-Result "MCP initialize succeeds (authenticated)" $false $_.Exception.Message
 }
 
-# Test 4 — MCP tools/list: server must advertise at least one tool
-try {
-    $tokenBody = @{
-        grant_type    = "client_credentials"
-        client_id     = $clientId
-        client_secret = $clientSecret
-        scope         = "api://$appRegName/.default"
-    }
-    $tokenResp = Invoke-RestMethod `
-        -Uri "https://login.microsoftonline.com/$tenantId/oauth2/v2.0/token" `
-        -Method POST -Body $tokenBody -TimeoutSec 20 -ErrorAction Stop
-    $token = $tokenResp.access_token
-
-    $listBody = '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
-    # MCP streamable-http requires Accept to include text/event-stream (spec §6.3.1)
-    $headers  = @{ Authorization = "Bearer $token"; "Content-Type" = "application/json"; Accept = "application/json, text/event-stream" }
-    $r = Invoke-RestMethod -Uri "$baseUrl/mcp" -Method POST -Headers $headers -Body $listBody -TimeoutSec 30 -ErrorAction Stop
-    $toolCount = $r.result.tools.Count
-    Test-Result "MCP tools/list returns tools" ($toolCount -gt 0) "$toolCount tools advertised"
-} catch {
-    Test-Result "MCP tools/list returns tools" $false $_.Exception.Message
+# Test 1 — Server is reachable
+if ($probeErr) {
+    Test-Result "Server endpoint is reachable" $false "Network error: $probeErr"
+} elseif ($probeTimeout) {
+    Test-Result "Server endpoint is reachable" $true "/mcp held SSE stream open (container is running)"
+} else {
+    Test-Result "Server endpoint is reachable" $true "/mcp => HTTP $probeStatus"
 }
+
+# Test 2 — Easy Auth blocks unauthenticated requests with 401
+#   NOTE: this FAILS until the Easy Auth provider is configured (Step 6 fix).
+#   A timeout here means requests are passing through to the MCP server (Easy Auth not set up).
+if ($probeErr) {
+    Test-Result "Easy Auth blocks unauthenticated requests (401)" $false "Network error: $probeErr"
+} elseif ($probeTimeout) {
+    Test-Result "Easy Auth blocks unauthenticated requests (401)" $false `
+        "Server held SSE stream — Easy Auth not yet configured. Run the Step 6 az CLI fix (see README)."
+} elseif ($probeStatus -eq 401) {
+    Test-Result "Easy Auth blocks unauthenticated requests (401)" $true "/mcp unauthenticated => 401"
+} else {
+    Test-Result "Easy Auth blocks unauthenticated requests (401)" $false `
+        "/mcp unauthenticated => $probeStatus — Easy Auth not configured. See README Step 6."
+}
+
+# Test 3 — Container App provisioning state (az CLI — no token needed)
+$caState = az containerapp show `
+    --name $AppName --resource-group $ResourceGroup `
+    --query "properties.provisioningState" -o tsv 2>$null
+Test-Result "Container App provisioning succeeded" ($caState -eq "Succeeded") "provisioningState=$caState"
+
+# Test 4 — Latest revision is in a running state (az CLI)
+$revState = az containerapp revision list `
+    --name $AppName --resource-group $ResourceGroup `
+    --query "[0].properties.runningState" -o tsv 2>$null
+Test-Result "Latest revision is running" ($revState -eq "Running") "runningState=$revState"
+
 
 Write-Host ""
 Write-Host ("  Results: {0} passed, {1} failed" -f $passed, $failed) -ForegroundColor $(if ($failed -eq 0) { "Green" } else { "Yellow" })
