@@ -48,7 +48,8 @@
           "mcpServerUrl": "https://d365fo-mcp.example.azurecontainerapps.io/mcp",
           "mcpToolDescription": { "file": "d365fo-mcp-tools.json" },
           "authorization": {
-            "type": "None"
+            "type": "OAuthPluginVault",
+            "referenceId": "REPLACE_WITH_VAULT_REFERENCE_ID"
           }
         }
       }
