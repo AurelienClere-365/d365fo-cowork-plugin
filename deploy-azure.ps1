@@ -241,7 +241,9 @@ Write-Host "      Image pushed: $AcrName.azurecr.io/d365fo-mcp:latest" -Foregrou
 Write-Host "[3/7] Configuring Azure AD app registration for MCP server..." -ForegroundColor White
 
 $appRegName    = "$AppName-server"
-$identifierUri = "api://$appRegName"
+# identifierUri is set to api://<clientId> after the app is created.
+# Tenant policy requires the URI to contain the app ID, tenant ID, or a verified domain.
+# api://<display-name> is rejected by default tenant policy.
 
 # Check if the app registration already exists
 $existingApp = az ad app list --display-name $appRegName --query "[0].appId" -o tsv 2>$null
@@ -255,7 +257,9 @@ if ($existingApp) {
         --output json
     $clientId = ($appJson | ConvertFrom-Json).appId
 
-    # Set audience URI  — tokens must carry  aud = api://<appRegName>
+    # Identifier URI must contain the app ID per default tenant policy
+    # api://<clientId> is always valid; api://<name> is rejected unless name is a verified domain
+    $identifierUri = "api://$clientId"
     az ad app update `
         --id $clientId `
         --identifier-uris $identifierUri `
@@ -351,11 +355,11 @@ az containerapp auth microsoft update `
     --resource-group $ResourceGroup `
     --client-id $clientId `
     --issuer "https://login.microsoftonline.com/$tenantId/v2.0" `
-    --allowed-audiences "api://$appRegName" `
+    --allowed-audiences "api://$clientId" `
     --output none
 
 Write-Host "      Easy Auth enabled. Unauthenticated calls now return HTTP 401." -ForegroundColor DarkGray
-Write-Host ("      Only tokens issued by tenant '{0}' for audience 'api://{1}' are accepted." -f $tenantId, $appRegName) -ForegroundColor DarkGray
+Write-Host ("      Only tokens issued by tenant '{0}' for audience 'api://{1}' are accepted." -f $tenantId, $clientId) -ForegroundColor DarkGray
 
 # ---------------------------------------------------------------------------
 # Step 7 — Output the URL + Cowork registration instructions
@@ -377,7 +381,7 @@ Write-Host "  MCP Server URL  : $mcpUrl" -ForegroundColor Yellow
 Write-Host "  Tenant ID       : $tenantId" -ForegroundColor Yellow
 Write-Host "  Client ID       : $clientId" -ForegroundColor Yellow
 Write-Host ("  Client Secret   : {0}  <-- STORE SECURELY" -f $clientSecret) -ForegroundColor Red
-Write-Host "  Audience        : api://$appRegName" -ForegroundColor Yellow
+Write-Host "  Audience        : api://$clientId" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "NEXT STEPS (manual — cannot be automated)" -ForegroundColor White
 Write-Host ""
