@@ -410,20 +410,48 @@ Copy-Item "$env:LOCALAPPDATA\d365fo-cli\d365fo-index.sqlite" .\d365fo-index.sqli
 
 ### Step 2: Deploy to Azure
 
-Edit the parameters at the top of `deploy-azure.ps1` or pass them directly:
+> **Region tip:** `westeurope` is sometimes at AKS capacity. If step 4 fails with
+> `AKSCapacityHeavyUsage`, retry with `-Location northeurope` or `-Location francecentral`.
 
 ```powershell
 .\deploy-azure.ps1 `
   -ResourceGroup  "rg-d365fo-tools" `
-  -Location       "westeurope" `
-  -AcrName        "acrD365FoTools" `
+  -Location       "northeurope" `
+  -AcrName        "acrd365fotools" `
   -AppName        "d365fo-mcp" `
   -EnvironmentName "cae-d365fo-tools"
 ```
 
-The script outputs a URL like:
+The script runs 7 deployment steps then automatically executes **4 smoke tests**:
+
+| Test | What is validated |
+|---|---|
+| Health endpoint | `GET /health` returns 200 — container is up |
+| Auth gate | Unauthenticated `POST /mcp` returns 401 — Easy Auth is working |
+| MCP initialize | Authenticated `initialize` call succeeds — MCP server is functional |
+| MCP tools/list | At least one tool advertised — D365FO index loaded correctly |
+
+At the end the script prints:
 ```
-MCP Server URL: https://d365fo-mcp.kindsky-xxx.westeurope.azurecontainerapps.io/mcp
+MCP Server URL  : https://d365fo-mcp.xxx.northeurope.azurecontainerapps.io/mcp
+Client ID       : xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+Client Secret   : <value>  <-- STORE SECURELY
+```
+
+#### If a deployment fails mid-way — clean retry
+
+Use `-Cleanup` to delete all Azure resources (ACR, Container App, Environment) and start
+fresh. The Azure AD app registration is preserved so the Client ID stays stable.
+
+```powershell
+# 1. Delete everything
+.\deploy-azure.ps1 -ResourceGroup "rg-d365fo-tools" -Location "northeurope" `
+  -AcrName "acrd365fotools" -AppName "d365fo-mcp" -EnvironmentName "cae-d365fo-tools" `
+  -Cleanup
+
+# 2. Redeploy cleanly
+.\deploy-azure.ps1 -ResourceGroup "rg-d365fo-tools" -Location "northeurope" `
+  -AcrName "acrd365fotools" -AppName "d365fo-mcp" -EnvironmentName "cae-d365fo-tools"
 ```
 
 ### Step 3: Update manifest.json
@@ -571,8 +599,8 @@ d365fo-cli index build --metadata "K:\AosService\PackagesLocalDirectory"
 
 # If using Option C, redeploy the container with the updated index
 Copy-Item "$env:LOCALAPPDATA\d365fo-cli\d365fo-index.sqlite" .\d365fo-index.sqlite
-.\deploy-azure.ps1 -ResourceGroup "rg-d365fo-tools" -Location "westeurope" `
-                   -AcrName "acrD365FoTools" -AppName "d365fo-mcp" `
+.\deploy-azure.ps1 -ResourceGroup "rg-d365fo-tools" -Location "northeurope" `
+                   -AcrName "acrd365fotools" -AppName "d365fo-mcp" `
                    -EnvironmentName "cae-d365fo-tools"
 ```
 
