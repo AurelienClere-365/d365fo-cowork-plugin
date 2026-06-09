@@ -74,6 +74,7 @@ d365fo-cowork-plugin/
 | d365fo-cli built | Not needed | Required | Required (index baked into image) |
 | D365FO index built | Not needed | Required | Required |
 | Azure subscription | Not needed | Not needed | Required |
+| Azure CLI (`az`) | Not needed | Not needed | Required |
 | M365 Global / Copilot Admin | Not needed | Not needed | Required (one-time) |
 | Frontier preview program | Not needed | Not needed | Required |
 
@@ -410,20 +411,70 @@ Copy-Item "$env:LOCALAPPDATA\d365fo-cli\d365fo-index.sqlite" .\d365fo-index.sqli
 
 ### Step 2: Deploy to Azure
 
-Edit the parameters at the top of `deploy-azure.ps1` or pass them directly:
+> **Prerequisite:** [Azure CLI](https://aka.ms/installazurecli) must be installed and you must be logged in:
+> ```powershell
+> winget install Microsoft.AzureCLI   # or download from https://aka.ms/installazurecli
+> az login
+> ```
+
+> **Region tip:** `westeurope` is sometimes at AKS capacity. If step 4 fails with
+> `AKSCapacityHeavyUsage`, retry with `-Location northeurope` or `-Location francecentral`.
 
 ```powershell
 .\deploy-azure.ps1 `
   -ResourceGroup  "rg-d365fo-tools" `
-  -Location       "westeurope" `
-  -AcrName        "acrD365FoTools" `
+  -Location       "northeurope" `
+  -AcrName        "acrd365fotools" `
   -AppName        "d365fo-mcp" `
   -EnvironmentName "cae-d365fo-tools"
 ```
 
-The script outputs a URL like:
+The script runs 7 deployment steps then automatically executes **4 smoke tests**:
+
+| Test | What is validated |
+|---|---|
+| Server reachable | `POST /mcp` (5 s probe) responds or holds SSE stream — container is up |
+| Easy Auth gate | Unauthenticated `POST /mcp` returns 401 — Easy Auth is working |
+| Container App state | `az containerapp show` provisioningState = Succeeded |
+| Revision running | `az containerapp revision list` latest revision is Running |
+
+At the end the script prints:
 ```
-MCP Server URL: https://d365fo-mcp.kindsky-xxx.westeurope.azurecontainerapps.io/mcp
+MCP Server URL  : https://d365fo-mcp.xxx.northeurope.azurecontainerapps.io/mcp
+Client ID       : xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+Client Secret   : <value>  <-- STORE SECURELY
+```
+
+#### If a deployment fails mid-way — clean retry
+
+Use `-Cleanup` to delete all Azure resources (ACR, Container App, Environment) and start
+fresh. The Azure AD app registration is preserved so the Client ID stays stable.
+
+> **Note:** ACR name deletion propagates globally — wait ~3 minutes after `-Cleanup`
+> before redeploying to avoid "name still reserved" errors.
+
+```powershell
+# 1. Delete everything
+.\deploy-azure.ps1 -ResourceGroup "rg-d365fo-tools" -Location "northeurope" `
+  -AcrName "acrd365fotools" -AppName "d365fo-mcp" -EnvironmentName "cae-d365fo-tools" `
+  -Cleanup
+
+# 2. Redeploy cleanly
+.\deploy-azure.ps1 -ResourceGroup "rg-d365fo-tools" -Location "northeurope" `
+  -AcrName "acrd365fotools" -AppName "d365fo-mcp" -EnvironmentName "cae-d365fo-tools"
+```
+
+#### Re-run smoke tests only — no redeploy
+
+Use `-TestOnly` to run the 4 smoke tests against the already-deployed app without
+rebuilding the image or touching any Azure resources. Useful after fixing Easy Auth
+or updating OAuth registration.
+
+```powershell
+.\deploy-azure.ps1 `
+  -ResourceGroup "rg-d365fo-tools" -Location "northeurope" `
+  -AcrName "acrd365fotools" -AppName "d365fo-mcp" -EnvironmentName "cae-d365fo-tools" `
+  -TestOnly
 ```
 
 ### Step 3: Update manifest.json
@@ -477,8 +528,21 @@ This validates all skills (rules P001-P008) and creates `d365fo-cowork-plugin.zi
 4. The plugin appears automatically in users' Sources & Skills panel
 
 **Updating an existing deployment:**
-1. Go to **Agents** → **All agents** → find **D365FO Cowork**
-2. Click **Update** → upload the new ZIP
+
+> **Important — avoid the skill count error:** If D365FO Cowork was previously installed
+> via the Cowork UI (Browse plugins), it exists as a personal sideload and will **not**
+> appear in All agents. Trying to "Add agent" again creates a second copy and triggers
+> *"Total agent skills count exceeds the maximum allowed (20)"*.
+>
+> **Correct update flow:**
+> 1. Open **Microsoft Teams** → left sidebar **Apps** → **Manage your apps**
+> 2. Find **D365FO Cowork** → `...` → **Remove** (removes the personal sideload)
+> 3. Go to [admin.microsoft.com](https://admin.microsoft.com) → **Agents** → **All agents**
+> 4. Click `...` → **Add agent** → upload the new ZIP
+> 5. Open the agent → **Deploy to** → **Entire organisation** (or specific groups)
+
+If D365FO Cowork already appears in All agents as an org-managed app:
+1. Find **D365FO Cowork** → `...` → **Update** → upload the new ZIP
 
 ### Step 6: Configure OAuthPluginVault (required for MCP tools to work)
 
@@ -501,29 +565,35 @@ Scope         : api://d365fo-mcp-server/.default
 Store the client secret in Azure Key Vault immediately after copying — it is never
 written to any file in this repo.
 
-#### 6b — Register the OAuth credential in M365 Admin Center
+#### 6b — Register in Teams Developer Portal
 
-Must be done by a **Global Admin or Copilot Admin**.
-
-1. Go to [admin.microsoft.com](https://admin.microsoft.com) → **Settings** → **Copilot**
-   → **Plugin management**
-2. Click **Add OAuth credential** and fill in:
+1. Go to [dev.teams.microsoft.com](https://dev.teams.microsoft.com) → **Tools** →
+   **OAuth client registration** → **Register**
+2. Fill in the form:
 
 | Field | Value |
 |---|---|
+| Registration name | `D365FO Cowork` |
+| Base URL | MCP Server URL from deploy-azure.ps1 output (e.g. `https://d365fo-mcp.xxx.azurecontainerapps.io`) |
+| Restrict usage by organization | **My organization only** |
+| Restrict usage by Teams app | **Existing Teams app** |
+| Teams app ID | your manifest `id` value |
 | Client ID | from deploy-azure.ps1 output |
 | Client secret | from deploy-azure.ps1 output |
-| Token URL | `https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token` |
-| Scope | `api://d365fo-mcp-server/.default` (or as printed by the script) |
+| Authorization endpoint | `https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/authorize` |
+| Token endpoint | `https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token` |
+| Refresh endpoint | `https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token` |
 
-3. Save — copy the **Vault reference ID** shown.
+   Replace `{tenantId}` with the Tenant ID from deploy-azure.ps1 output.
+
+3. Click **Save** — copy the **OAuth registration ID** shown. That is your `referenceId`.
 
 #### 6c — Update manifest.json and redeploy
 
 ```json
 "authorization": {
   "type": "OAuthPluginVault",
-  "referenceId": "YOUR_VAULT_REFERENCE_ID"  // paste from step 6b
+  "referenceId": "YOUR_OAUTH_REGISTRATION_ID"  // OAuth registration ID from step 6b
 }
 ```
 
@@ -533,8 +603,8 @@ Also replace `mcpServerUrl` with the real URL from deploy-azure.ps1:
 "mcpServerUrl": "https://d365fo-mcp.kindsky-xxx.westeurope.azurecontainerapps.io/mcp"
 ```
 
-Then bump `"version"` in `manifest.json`, run `.\.package.ps1`, and update the plugin
-(**Agents → All agents → D365FO Cowork → Update**).
+Then bump `"version"` in `manifest.json`, run `.\package.ps1`, and update the plugin
+following the flow in **Step 5 — Updating an existing deployment** above.
 
 After updating, Cowork will prompt each user to consent once; tokens are then stored and
 re-injected automatically on every call to the Container App.
@@ -552,8 +622,8 @@ d365fo-cli index build --metadata "K:\AosService\PackagesLocalDirectory"
 
 # If using Option C, redeploy the container with the updated index
 Copy-Item "$env:LOCALAPPDATA\d365fo-cli\d365fo-index.sqlite" .\d365fo-index.sqlite
-.\deploy-azure.ps1 -ResourceGroup "rg-d365fo-tools" -Location "westeurope" `
-                   -AcrName "acrD365FoTools" -AppName "d365fo-mcp" `
+.\deploy-azure.ps1 -ResourceGroup "rg-d365fo-tools" -Location "northeurope" `
+                   -AcrName "acrd365fotools" -AppName "d365fo-mcp" `
                    -EnvironmentName "cae-d365fo-tools"
 ```
 
