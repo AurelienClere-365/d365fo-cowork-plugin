@@ -45,6 +45,7 @@ d365fo-cowork-plugin/
 ├── package.ps1                            # ASKILL validation + ZIP packaging
 ├── README.md                              # This file
 ├── EXAMPLES.md                            # Usage examples with sample prompts
+├── TROUBLESHOOTING.md                     # Monitoring, debugging & troubleshooting after deployment
 └── skills/
     ├── d365fo-table-search/
     │   ├── SKILL.md
@@ -544,6 +545,17 @@ This validates all skills (rules P001-P008) and creates `d365fo-cowork-plugin.zi
 If D365FO Cowork already appears in All agents as an org-managed app:
 1. Find **D365FO Cowork** → `...` → **Update** → upload the new ZIP
 
+> **Fast path for version-only updates:** if the Azure deployment and OAuthPluginVault
+> auth are already working and you only changed skills/docs (no infra or auth changes),
+> use `-UpdateOnly` instead of steps 1-4 above — it skips all Azure calls entirely:
+> ```powershell
+> .\deploy-azure.ps1 -UpdateOnly -NewVersion 1.1.0
+> # Bumps manifest.json version, appends a CHANGELOG.md entry, and re-runs package.ps1.
+> # mcpServerUrl and authorization are left exactly as they are today.
+> ```
+> Omit `-NewVersion` to auto-increment the patch version instead. Then upload the
+> resulting ZIP via the update flow above.
+
 ### Step 6: Configure OAuthPluginVault (required for MCP tools to work)
 
 > **Important:** Without OAuthPluginVault, Cowork cannot inject a Bearer token into
@@ -609,6 +621,11 @@ following the flow in **Step 5 — Updating an existing deployment** above.
 
 After updating, Cowork will prompt each user to consent once; tokens are then stored and
 re-injected automatically on every call to the Container App.
+
+> If validation fails and the reason isn't obvious, see
+> [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for how to monitor and debug the plugin after
+> deployment — including where to find Entra ID sign-in logs, common failure signatures,
+> and an escalation checklist.
 
 ---
 
@@ -708,6 +725,10 @@ you need. Quick reference:
 az ad app credential reset --id <clientId> --years 2
 # Then update the vault credential in M365 admin center with the new secret.
 ```
+
+See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for how to monitor, debug, and
+troubleshoot the plugin once it's deployed and in use — especially for M365 Copilot,
+where there's no local console or log file to check.
 
 ---
 
