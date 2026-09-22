@@ -545,6 +545,17 @@ This validates all skills (rules P001-P008) and creates `d365fo-cowork-plugin.zi
 If D365FO Cowork already appears in All agents as an org-managed app:
 1. Find **D365FO Cowork** → `...` → **Update** → upload the new ZIP
 
+> **Fast path for version-only updates:** if the Azure deployment and OAuthPluginVault
+> auth are already working and you only changed skills/docs (no infra or auth changes),
+> use `-UpdateOnly` instead of steps 1-4 above — it skips all Azure calls entirely:
+> ```powershell
+> .\deploy-azure.ps1 -UpdateOnly -NewVersion 1.1.0
+> # Bumps manifest.json version, appends a CHANGELOG.md entry, and re-runs package.ps1.
+> # mcpServerUrl and authorization are left exactly as they are today.
+> ```
+> Omit `-NewVersion` to auto-increment the patch version instead. Then upload the
+> resulting ZIP via the update flow above.
+
 ### Step 6: Configure OAuthPluginVault (required for MCP tools to work)
 
 > **Important:** Without OAuthPluginVault, Cowork cannot inject a Bearer token into

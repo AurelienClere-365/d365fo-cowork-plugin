@@ -35,3 +35,8 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   post-deployment issues) and linked it from README.md
 - Documented a troubleshooting section for the "Authentication is still processing.
   Please try again." message in `TROUBLESHOOTING.md`
+- Added `-UpdateOnly`/`-NewVersion` fast-update mode to `deploy-azure.ps1`: bumps
+  `manifest.json` version, appends a `CHANGELOG.md` entry, and re-runs `package.ps1`
+  without touching Azure infrastructure or OAuthPluginVault auth
+- Fixed `package.ps1` to include `TROUBLESHOOTING.md` in the packaged ZIP, and to exit
+  0 explicitly on success (previously relied on an unset `$LASTEXITCODE`)
