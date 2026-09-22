@@ -1,7 +1,7 @@
 {
   "$schema": "https://developer.microsoft.com/json-schemas/teams/v1.28/MicrosoftTeams.schema.json",
   "manifestVersion": "1.28",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "id": "c7a3f9e2-4b6d-5080-9c1e-d365f0caf001",
   "developer": {
     "name": "Aurelien Clere & Laze Janev",
