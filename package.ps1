@@ -142,7 +142,7 @@ New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 
 foreach ($file in @('manifest.json','d365fo-mcp-tools.json','color.png','outline.png',
                      'README.md','CHANGELOG.md','CONTRIBUTING.md','PRIVACY.md',
-                     'SECURITY.md','LICENSE','EXAMPLES.md')) {
+                     'SECURITY.md','LICENSE','EXAMPLES.md','TROUBLESHOOTING.md')) {
     $src = Join-Path $root $file
     if (Test-Path $src) { Copy-Item $src $tempDir }
 }
@@ -163,3 +163,5 @@ Write-Host "Install options:"
 Write-Host "  Sideload   : admin.microsoft.com > Manage apps > Upload custom app"
 Write-Host "  Org-wide   : admin.microsoft.com > Copilot > Agents > All agents > Deploy"
 Write-Host ""
+
+exit 0

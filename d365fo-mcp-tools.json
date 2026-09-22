@@ -6,36 +6,526 @@
   "description_for_human": "Search Dynamics 365 Finance & Operations metadata — tables, classes, entities, security, labels, enums, EDTs, forms, reports, queries, and models — through natural language.",
   "description_for_model": "Tools provided by the D365FO CLI MCP server backed by a local SQLite metadata index of your PackagesLocalDirectory. Supports table and field discovery (fields, relations, EDT types, indexes), X++ class hierarchy and CoC extension point analysis, data entity and DMF mapping lookup, security object inspection (duties, privileges, roles, entry points), label file search, base enum and EDT browsal, form data source and control inspection, SSRS report discovery, X++ query and view analysis, business event catalog search, integration service and data contract lookup, RunBase/SysOperation batch class discovery, and model architecture and dependency analysis. All metadata is read from the local index — no live AOS connection required.",
   "tools": [
-    { "name": "table_search",              "description": "Search D365FO tables by name or keyword. Returns matching table names, labels and module." },
-    { "name": "table_get",                 "description": "Get full metadata for a D365FO table: fields, EDT types, relations, indexes, delete actions and table groups." },
-    { "name": "table_find_coc",            "description": "Find Chain of Command (CoC) extension points on a table method, e.g. SalesTable::insert." },
-    { "name": "class_search",             "description": "Search X++ classes by name, base class, or keyword." },
-    { "name": "class_get",                "description": "Get X++ class metadata: methods, parameters, base class hierarchy, interfaces implemented, and existing CoC extensions." },
-    { "name": "class_find_coc",           "description": "Find CoC extension points on a specific class method." },
-    { "name": "entity_search",            "description": "Search D365FO data entities by name, mapped table, or keyword." },
-    { "name": "entity_get",               "description": "Get data entity metadata: fields, staging table, mapped table, DMF configuration, and entity category." },
-    { "name": "label_search",             "description": "Search D365FO label files by text string or label ID across all installed label files." },
-    { "name": "label_get",                "description": "Get the text, comment, and label file location for a specific D365FO label ID." },
-    { "name": "security_search",          "description": "Search security objects (duties, privileges, roles, security policies) by name or keyword." },
-    { "name": "security_get",             "description": "Get permissions, entry points, and table permissions for a security duty or privilege." },
-    { "name": "enum_search",              "description": "Search X++ base enums by name or keyword in the metadata index." },
-    { "name": "enum_get",                 "description": "Get base enum values, labels, and EDT associations for a D365FO base enum." },
-    { "name": "edt_search",               "description": "Search extended data types (EDTs) by name or base type." },
-    { "name": "edt_get",                  "description": "Get EDT properties: base type, extends chain, string size, enum type if applicable." },
-    { "name": "form_search",              "description": "Search D365FO forms by name or keyword in the metadata index." },
-    { "name": "form_get",                 "description": "Get form metadata: data sources, controls hierarchy, and menu item bindings." },
-    { "name": "query_search",             "description": "Search D365FO queries and views by name or keyword." },
-    { "name": "query_get",                "description": "Get query or view definition: data sources, ranges, relations and fields selected." },
-    { "name": "business_event_search",    "description": "Search the D365FO business event catalog by name or category." },
-    { "name": "business_event_get",       "description": "Get business event metadata: payload contract fields, triggering class, and category." },
-    { "name": "integration_search",       "description": "Search D365FO integration services, service groups, and data contracts by name." },
-    { "name": "integration_get",          "description": "Get service or data contract metadata: operations, parameters, and AIF configuration." },
-    { "name": "batch_class_search",       "description": "Search RunBase, SysOperation, and batch-capable X++ classes by name or keyword." },
-    { "name": "batch_class_get",          "description": "Get batch class metadata: pack/unpack fields, dialog parameters, and RunBaseBatch inheritance chain." },
-    { "name": "report_search",            "description": "Search SSRS reports by name or dataset keyword in the metadata index." },
-    { "name": "report_get",               "description": "Get SSRS report metadata: datasets, parameters, data providers, and report design names." },
-    { "name": "model_list",               "description": "List all models in the metadata index with their layer, publisher, and version." },
-    { "name": "model_get",                "description": "Get model descriptor: dependencies, layer, publisher, version, and object counts by type." },
-    { "name": "index_status",             "description": "Get the current status of the D365FO metadata index: last build time, object counts, and index health." }
+    {
+      "name": "table_search",
+      "description": "Search D365FO tables by name or keyword. Returns matching table names, labels and module.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search text — table name or keyword."
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "table_get",
+      "description": "Get full metadata for a D365FO table: fields, EDT types, relations, indexes, delete actions and table groups.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "table_name": {
+            "type": "string",
+            "description": "Exact D365FO table name, e.g. SalesTable."
+          }
+        },
+        "required": [
+          "table_name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "table_find_coc",
+      "description": "Find Chain of Command (CoC) extension points on a table method, e.g. SalesTable::insert.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "table_name": {
+            "type": "string",
+            "description": "D365FO table name."
+          },
+          "method_name": {
+            "type": "string",
+            "description": "Table method to find Chain of Command extension points for, e.g. insert."
+          }
+        },
+        "required": [
+          "table_name",
+          "method_name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "class_search",
+      "description": "Search X++ classes by name, base class, or keyword.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search text — class name, base class, or keyword."
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "class_get",
+      "description": "Get X++ class metadata: methods, parameters, base class hierarchy, interfaces implemented, and existing CoC extensions.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "class_name": {
+            "type": "string",
+            "description": "Exact X++ class name."
+          }
+        },
+        "required": [
+          "class_name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "class_find_coc",
+      "description": "Find CoC extension points on a specific class method.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "class_name": {
+            "type": "string",
+            "description": "X++ class name."
+          },
+          "method_name": {
+            "type": "string",
+            "description": "Class method to find Chain of Command extension points for."
+          }
+        },
+        "required": [
+          "class_name",
+          "method_name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "entity_search",
+      "description": "Search D365FO data entities by name, mapped table, or keyword.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search text — entity name, mapped table, or keyword."
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "entity_get",
+      "description": "Get data entity metadata: fields, staging table, mapped table, DMF configuration, and entity category.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "entity_name": {
+            "type": "string",
+            "description": "Exact D365FO data entity name."
+          }
+        },
+        "required": [
+          "entity_name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "label_search",
+      "description": "Search D365FO label files by text string or label ID across all installed label files.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Text string or label ID to search for across label files."
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "label_get",
+      "description": "Get the text, comment, and label file location for a specific D365FO label ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "label_id": {
+            "type": "string",
+            "description": "D365FO label ID, e.g. @SYS12345."
+          }
+        },
+        "required": [
+          "label_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "security_search",
+      "description": "Search security objects (duties, privileges, roles, security policies) by name or keyword.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search text — duty, privilege, or role name/keyword."
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "security_get",
+      "description": "Get permissions, entry points, and table permissions for a security duty or privilege.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Exact security duty or privilege name."
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "enum_search",
+      "description": "Search X++ base enums by name or keyword in the metadata index.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search text — base enum name or keyword."
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "enum_get",
+      "description": "Get base enum values, labels, and EDT associations for a D365FO base enum.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "enum_name": {
+            "type": "string",
+            "description": "Exact X++ base enum name."
+          }
+        },
+        "required": [
+          "enum_name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "edt_search",
+      "description": "Search extended data types (EDTs) by name or base type.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search text — EDT name or base type."
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "edt_get",
+      "description": "Get EDT properties: base type, extends chain, string size, enum type if applicable.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "edt_name": {
+            "type": "string",
+            "description": "Exact extended data type (EDT) name."
+          }
+        },
+        "required": [
+          "edt_name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "form_search",
+      "description": "Search D365FO forms by name or keyword in the metadata index.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search text — form name or keyword."
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "form_get",
+      "description": "Get form metadata: data sources, controls hierarchy, and menu item bindings.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "form_name": {
+            "type": "string",
+            "description": "Exact D365FO form name."
+          }
+        },
+        "required": [
+          "form_name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "query_search",
+      "description": "Search D365FO queries and views by name or keyword.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search text — query or view name or keyword."
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "query_get",
+      "description": "Get query or view definition: data sources, ranges, relations and fields selected.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query_name": {
+            "type": "string",
+            "description": "Exact D365FO query or view name."
+          }
+        },
+        "required": [
+          "query_name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "business_event_search",
+      "description": "Search the D365FO business event catalog by name or category.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search text — business event name or category."
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "business_event_get",
+      "description": "Get business event metadata: payload contract fields, triggering class, and category.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "event_name": {
+            "type": "string",
+            "description": "Exact business event name."
+          }
+        },
+        "required": [
+          "event_name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "integration_search",
+      "description": "Search D365FO integration services, service groups, and data contracts by name.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search text — integration service, service group, or data contract name."
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "integration_get",
+      "description": "Get service or data contract metadata: operations, parameters, and AIF configuration.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Exact service or data contract name."
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "batch_class_search",
+      "description": "Search RunBase, SysOperation, and batch-capable X++ classes by name or keyword.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search text — RunBase/SysOperation/batch class name or keyword."
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "batch_class_get",
+      "description": "Get batch class metadata: pack/unpack fields, dialog parameters, and RunBaseBatch inheritance chain.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "class_name": {
+            "type": "string",
+            "description": "Exact RunBase/SysOperation/batch-capable X++ class name."
+          }
+        },
+        "required": [
+          "class_name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "report_search",
+      "description": "Search SSRS reports by name or dataset keyword in the metadata index.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search text — SSRS report name or dataset keyword."
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "report_get",
+      "description": "Get SSRS report metadata: datasets, parameters, data providers, and report design names.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "report_name": {
+            "type": "string",
+            "description": "Exact SSRS report name."
+          }
+        },
+        "required": [
+          "report_name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "model_list",
+      "description": "List all models in the metadata index with their layer, publisher, and version.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "model_get",
+      "description": "Get model descriptor: dependencies, layer, publisher, version, and object counts by type.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "model_name": {
+            "type": "string",
+            "description": "Exact D365FO model name."
+          }
+        },
+        "required": [
+          "model_name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "index_status",
+      "description": "Get the current status of the D365FO metadata index: last build time, object counts, and index health.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    }
   ]
 }

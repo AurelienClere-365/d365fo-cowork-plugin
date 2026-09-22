@@ -44,6 +44,20 @@
 .PARAMETER ClientSecret
     Ignored. Kept for backwards compatibility only.
 
+.PARAMETER UpdateOnly
+    Fast update path for the common "the Azure infrastructure and auth are already
+    working, I just want to push a newer skill/manifest version" case. Skips all Azure
+    steps entirely (no ACR build, no Container App update, no app registration changes)
+    and only bumps `"version"` in manifest.json, appends a CHANGELOG.md entry, and
+    re-runs package.ps1 to produce a new ZIP. None of the Azure-specific parameters
+    (-ResourceGroup, -Location, -AcrName, -EnvironmentName) are required with this
+    switch; -AppName is also not required.
+
+.PARAMETER NewVersion
+    Version string to write into manifest.json when -UpdateOnly is used (e.g. "1.1.0").
+    If omitted, the patch segment of the current version is auto-incremented
+    (e.g. "1.0.0" -> "1.0.1"). Ignored unless -UpdateOnly is specified.
+
 .EXAMPLE
     # Full deploy
     .\.deploy-azure.ps1 `
@@ -72,22 +86,41 @@
         -AppName        "d365fo-mcp" `
         -EnvironmentName "cae-d365fo-tools" `
         -Cleanup
+
+.EXAMPLE
+    # Push a newer skill/manifest version to an already-deployed, already-authenticated tenant
+    .\deploy-azure.ps1 -UpdateOnly -NewVersion 1.1.0
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][string]$ResourceGroup,
-    [Parameter(Mandatory)][string]$Location,
-    [Parameter(Mandatory)][string]$AcrName,
-    [Parameter(Mandatory)][string]$AppName,
-    [Parameter(Mandatory)][string]$EnvironmentName,
+    [string]$ResourceGroup,
+    [string]$Location,
+    [string]$AcrName,
+    [string]$AppName,
+    [string]$EnvironmentName,
     [switch]$Cleanup,
     [switch]$TestOnly,
     [string]$ClientId,
-    [string]$ClientSecret
+    [string]$ClientSecret,
+    [switch]$UpdateOnly,
+    [string]$NewVersion
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+if (-not $UpdateOnly) {
+    $missing = @()
+    if (-not $ResourceGroup)   { $missing += '-ResourceGroup' }
+    if (-not $Location)        { $missing += '-Location' }
+    if (-not $AcrName)         { $missing += '-AcrName' }
+    if (-not $AppName)         { $missing += '-AppName' }
+    if (-not $EnvironmentName) { $missing += '-EnvironmentName' }
+    if ($missing.Count -gt 0) {
+        Write-Error "Missing required parameter(s): $($missing -join ', '). (Not required when using -UpdateOnly.)"
+        exit 1
+    }
+}
 
 # ACR names must be lowercase alphanumeric (Azure requirement)
 $AcrName = $AcrName.ToLower() -replace '[^a-z0-9]', ''
@@ -103,6 +136,86 @@ if (-not $azCmd) {
 if ($azCmd) {
     # Wrap in a function so the rest of the script can call `az` normally
     function az { & $azCmd @args }
+}
+
+# ---------------------------------------------------------------------------
+# UpdateOnly mode — bump version, update changelog, repackage. No Azure calls.
+# ---------------------------------------------------------------------------
+if ($UpdateOnly) {
+    Write-Host ""
+    Write-Host "UPDATE-ONLY MODE — bumping version and repackaging (no Azure changes)" -ForegroundColor Cyan
+    Write-Host "  Azure infrastructure, Easy Auth and the app registration are left untouched." -ForegroundColor DarkGray
+    Write-Host ""
+
+    $manifestPath = Join-Path $scriptDir "manifest.json"
+    if (-not (Test-Path $manifestPath)) {
+        Write-Error "manifest.json not found at: $manifestPath"
+        exit 1
+    }
+
+    $manifest = [IO.File]::ReadAllText($manifestPath) | ConvertFrom-Json
+    $currentVersion = $manifest.version
+
+    if (-not $NewVersion) {
+        $parts = $currentVersion -split '\.'
+        if ($parts.Count -eq 3 -and $parts[2] -match '^\d+$') {
+            $parts[2] = [string]([int]$parts[2] + 1)
+            $NewVersion = $parts -join '.'
+        } else {
+            Write-Error "Could not auto-increment version '$currentVersion'. Pass -NewVersion explicitly."
+            exit 1
+        }
+    }
+
+    $manifest.version = $NewVersion
+    ($manifest | ConvertTo-Json -Depth 20) | Set-Content -Path $manifestPath -Encoding utf8
+    Write-Host ("  manifest.json updated: version {0} -> {1} (mcpServerUrl/authorization unchanged)." -f $currentVersion, $NewVersion) -ForegroundColor Green
+
+    $changelogPath = Join-Path $scriptDir "CHANGELOG.md"
+    if (Test-Path $changelogPath) {
+        $changelog = [IO.File]::ReadAllText($changelogPath)
+        $today = Get-Date -Format 'yyyy-MM-dd'
+
+        $match = [regex]::Match($changelog, '(?s)## \[Unreleased\]\s*\r?\n(.*?)(\r?\n---|\z)')
+        $unreleasedNotes = if ($match.Success) { $match.Groups[1].Value.Trim() } else { '' }
+        if ([string]::IsNullOrWhiteSpace($unreleasedNotes)) {
+            $unreleasedNotes = "- Version bump only — no skill or manifest content changes (via ``deploy-azure.ps1 -UpdateOnly``)"
+        }
+
+        $newEntry = @"
+## [$NewVersion] — $today
+
+$unreleasedNotes
+
+---
+
+## [Unreleased]
+
+- Placeholder for next changes
+"@
+
+        if ($match.Success) {
+            $changelog = $changelog.Substring(0, $match.Index) + $newEntry
+        } else {
+            $changelog = $changelog.TrimEnd() + "`n`n---`n`n" + $newEntry
+        }
+        Set-Content -Path $changelogPath -Value $changelog -Encoding utf8 -NoNewline
+        Write-Host ("  CHANGELOG.md updated: added entry for {0}." -f $NewVersion) -ForegroundColor Green
+    } else {
+        Write-Host "  CHANGELOG.md not found — skipping changelog update." -ForegroundColor Yellow
+    }
+
+    Write-Host ""
+    Write-Host "  Repackaging via package.ps1..." -ForegroundColor White
+    & (Join-Path $scriptDir "package.ps1")
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "package.ps1 failed. Fix the reported validation errors and re-run."
+        exit 1
+    }
+
+    Write-Host ""
+    Write-Host "Done. Upload the new ZIP via admin.microsoft.com > Agents > All agents > D365FO Cowork > Update." -ForegroundColor Green
+    exit 0
 }
 
 # ---------------------------------------------------------------------------
