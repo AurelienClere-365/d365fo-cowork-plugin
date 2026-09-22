@@ -45,6 +45,7 @@ d365fo-cowork-plugin/
 ├── package.ps1                            # ASKILL validation + ZIP packaging
 ├── README.md                              # This file
 ├── EXAMPLES.md                            # Usage examples with sample prompts
+├── TROUBLESHOOTING.md                     # Monitoring, debugging & troubleshooting after deployment
 └── skills/
     ├── d365fo-table-search/
     │   ├── SKILL.md
@@ -610,6 +611,11 @@ following the flow in **Step 5 — Updating an existing deployment** above.
 After updating, Cowork will prompt each user to consent once; tokens are then stored and
 re-injected automatically on every call to the Container App.
 
+> If validation fails and the reason isn't obvious, see
+> [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for how to monitor and debug the plugin after
+> deployment — including where to find Entra ID sign-in logs, common failure signatures,
+> and an escalation checklist.
+
 ---
 
 ## Updating the metadata index
@@ -708,6 +714,10 @@ you need. Quick reference:
 az ad app credential reset --id <clientId> --years 2
 # Then update the vault credential in M365 admin center with the new secret.
 ```
+
+See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for how to monitor, debug, and
+troubleshoot the plugin once it's deployed and in use — especially for M365 Copilot,
+where there's no local console or log file to check.
 
 ---
 

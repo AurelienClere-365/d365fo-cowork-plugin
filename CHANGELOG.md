@@ -30,4 +30,8 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-- Placeholder for next changes
+- Added `inputSchema` to all 31 tool definitions in `d365fo-mcp-tools.json`
+- Added `TROUBLESHOOTING.md` (monitoring, debugging, and an escalation checklist for
+  post-deployment issues) and linked it from README.md
+- Documented a troubleshooting section for the "Authentication is still processing.
+  Please try again." message in `TROUBLESHOOTING.md`
